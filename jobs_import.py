@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import os, re, hashlib, requests
+import os, re, hashlib, requests, logging, time
 from datetime import datetime, timedelta, timezone
 from typing import List, Any, Optional
 from langdetect import detect, DetectorFactory, LangDetectException
@@ -30,12 +30,28 @@ TECH_SKILLS = {
     "typescript",
     "react",
     "vue",
+    "vuejs",
     "angular",
     "node",
+    "bun",
     "django",
+    "socket",
     "flask",
+    "fastapi",
+    "firebase",
+    "css",
+    "html",
+    "flutter",
+    "reactnative",
+    "nativescript",
+    "rest",
+    "api",
     "c++",
     "c#",
+    "c",
+    "rust",
+    "rocket",
+    "qwik",
     "go",
     "ruby",
     "rails",
@@ -44,6 +60,11 @@ TECH_SKILLS = {
     "spring",
     "sql",
     "mongodb",
+    "terraform",
+    "git",
+    "mysql",
+    "postgres",
+    "gcp",
     "redis",
     "docker",
     "kubernetes",
@@ -61,6 +82,14 @@ SENIORITY_KEYWORDS = {
     "principal": "principal",
 }
 
+# ============ LOGGING ============
+log_file = os.path.join(os.path.dirname(__file__), "jobs_import.log")
+logging.basicConfig(
+    filename=log_file,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+
 # Mongo setup
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
@@ -72,6 +101,17 @@ jobs_col.create_index([("link", ASCENDING)], unique=True)
 # ============ HELPERS ============
 def hash_text(s: str) -> str:
     return hashlib.sha1((s or "").encode()).hexdigest()
+
+
+def retry_request(url, params=None, headers=None, retries=3, timeout=30):
+    for attempt in range(1, retries + 1):
+        try:
+            return requests.get(url, params=params, headers=headers, timeout=timeout)
+        except requests.exceptions.RequestException as e:
+            logging.warning(f"Request failed ({attempt}/{retries}): {e}")
+            time.sleep(2)
+    logging.error(f"Request failed after {retries} retries: {url}")
+    return None
 
 
 def parse_date(raw: str) -> Optional[datetime]:
@@ -98,6 +138,15 @@ def extract_tech_skills(text: str) -> List[str]:
         if tok_lower in TECH_SKILLS:
             found.add(tok_lower)
     return sorted(found)
+
+
+def extract_email(text: str) -> Optional[str]:
+    if not text:
+        return None
+    match = re.search(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", text)
+    if match:
+        return match.group(0).lower()
+    return None
 
 
 def extract_seniority(text: str) -> Optional[str]:
@@ -153,7 +202,7 @@ def fetch_adzuna(country="gb", what="developer") -> List[dict]:
         "results_per_page": 50,
         "what": what,
     }
-    r = requests.get(url, params=params, timeout=15).json()
+    r = requests.get(url, params=params, timeout=30).json()
     out = []
     for j in r.get("results", []):
         out.append(
@@ -211,7 +260,7 @@ def fetch_jooble() -> List[dict]:
 
 def fetch_remotive() -> List[dict]:
     r = requests.get(
-        "https://remotive.com/api/remote-jobs?category=software-dev", timeout=15
+        "https://remotive.com/api/remote-jobs?category=software-dev", timeout=30
     ).json()
     return [
         {
@@ -228,17 +277,24 @@ def fetch_remotive() -> List[dict]:
 
 
 def fetch_rss(url: str) -> List[dict]:
-    r = requests.get(url, timeout=15)
-    soup = BeautifulSoup(r.text, "xml")
+    r = retry_request(url)
+    if not r:
+        return []
+    try:
+        soup = BeautifulSoup(r.text, "xml")
+    except Exception as e:
+        logging.error(f"Error parsing RSS {url}: {e}")
+        return []
+
     out = []
     for it in soup.find_all("item"):
         out.append(
             {
-                "link": it.link.text if it.link else None, # type: ignore
-                "title": it.title.text if it.title else None, # type: ignore
-                "description": it.description.text if it.description else "", # type: ignore
+                "link": it.link.text if it.link else None,  # type: ignore
+                "title": it.title.text if it.title else None,  # type: ignore
+                "description": it.description.text if it.description else "",  # type: ignore
                 "company": None,
-                "published": it.pubDate.text if it.pubDate else None, # type: ignore
+                "published": it.pubDate.text if it.pubDate else None,  # type: ignore
                 "salary": None,
                 "raw": {},
             }
@@ -246,11 +302,44 @@ def fetch_rss(url: str) -> List[dict]:
     return out
 
 
+def fetch_simplyhired(query="developer"):
+    url = f"https://www.simplyhired.com/search?q={query}"
+    r = requests.get(url, timeout=30)
+    soup = BeautifulSoup(r.text, "html.parser")
+    out = []
+
+    for job in soup.select("div.SerpJob-jobCard"):
+        link_tag = job.select_one("a.SerpJob-link")
+        title_tag = job.select_one("a.SerpJob-link span")
+        company_tag = job.select_one(".JobPosting-labelWithIcon span")
+        date_tag = job.select_one(".JobPosting-labelWithIcon time")
+        desc_tag = job.select_one(".JobPosting-snippet")
+
+        link = "https://www.simplyhired.com" + link_tag["href"] if link_tag else None  # type: ignore
+        out.append(
+            {
+                "link": link,
+                "title": title_tag.text.strip() if title_tag else None,
+                "description": desc_tag.text.strip() if desc_tag else "",
+                "company": company_tag.text.strip() if company_tag else None,
+                "published": (
+                    date_tag["datetime"]
+                    if date_tag and date_tag.has_attr("datetime")
+                    else None
+                ),
+                "salary": None,
+                "raw": {},
+            }
+        )
+
+    return out
+
+
 # ============ PIPELINE ============
 def process_job(raw: dict):
     pub = parse_date(raw.get("published") or "")
     now = datetime.now(timezone.utc)
-    if not pub or pub < now - timedelta(days=7):
+    if not pub or pub < now - timedelta(days=1):
         return
 
     desc = raw.get("description") or ""
@@ -274,7 +363,7 @@ def process_job(raw: dict):
             seniority = "mid"
 
     # company
-    comp_ref = upsert_company(raw.get("company"), raw.get("raw") or {}) # type: ignore
+    comp_ref = upsert_company(raw.get("company"), raw.get("raw") or {})  # type: ignore
 
     # language
     try:
@@ -295,10 +384,13 @@ def process_job(raw: dict):
         "skills": sorted(set(skills)),
         "seniority": seniority,
         "language": lang,
+        "email": extract_email(desc),
         "raw": raw,
     }
 
-    print(f"[IMPORT] {title} @ {raw.get('company')} ({pub.date()}) [{lang}] [{seniority}] -> {raw.get('link')}")
+    print(
+        f"[IMPORT] {title} @ {raw.get('company')} ({pub.date()}) [{lang}] [{seniority}] -> {raw.get('link')}"
+    )
     save_job(job_doc)
 
 
@@ -308,13 +400,19 @@ def run():
         all_jobs += fetch_adzuna(country)
     all_jobs += fetch_jooble()
     all_jobs += fetch_remotive()
-    all_jobs += fetch_rss("https://weworkremotely.com/categories/remote-programming-jobs.rss")
-    all_jobs += fetch_rss("https://stackoverflow.com/jobs/feed")
+    all_jobs += fetch_simplyhired("developer")
+    all_jobs += fetch_rss(
+        "https://weworkremotely.com/categories/remote-programming-jobs.rss"
+    )
+    all_jobs += fetch_rss("https://remoteok.io/remote-dev-jobs.rss")
+    all_jobs += fetch_rss("https://www.python.org/jobs/feed/rss")
+
     for j in all_jobs:
         try:
             process_job(j)
         except Exception as e:
             print("Error job:", e)
+
 
 if __name__ == "__main__":
     run()
