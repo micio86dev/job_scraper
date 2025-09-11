@@ -12,13 +12,25 @@ pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```
 
-2. CronJob example
+2. Setup & Running:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+```
+
+
+3. CronJob example
 
 ```bash
 0 * * * * /usr/bin/python3 /full/path/to/jobs_import.py >> /full/path/to/jobs_import.log 2>&1
 ```
 
-3. Logs
+
+4. Logs
     - All imports and errors are logged to the cron log file:
 
 ```text
