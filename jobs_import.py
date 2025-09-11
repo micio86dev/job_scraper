@@ -103,7 +103,7 @@ def hash_text(s: str) -> str:
     return hashlib.sha1((s or "").encode()).hexdigest()
 
 
-def retry_request(url, params=None, headers=None, retries=3, timeout=30):
+def retry_request(url, params=None, headers=None, retries=3, timeout=60):
     for attempt in range(1, retries + 1):
         try:
             return requests.get(url, params=params, headers=headers, timeout=timeout)
