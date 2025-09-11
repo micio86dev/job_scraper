@@ -404,7 +404,7 @@ def run():
     all_jobs += fetch_rss(
         "https://weworkremotely.com/categories/remote-programming-jobs.rss"
     )
-    all_jobs += fetch_rss("https://remoteok.io/remote-dev-jobs.rss")
+    all_jobs += fetch_rss("https://remoteok.com/remote-dev-jobs.rss")
     all_jobs += fetch_rss("https://www.python.org/jobs/feed/rss")
 
     for j in all_jobs:
