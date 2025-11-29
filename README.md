@@ -5,19 +5,20 @@ Fetch jobs hourly from multiple APIs and RSS feeds, extract skills, seniority, a
 
 ## Setup
 
-1. Install dependencies:
-
-```bash
-pip install -r requirements.txt
-python -m spacy download en_core_web_sm
-```
-
-2. Setup & Running:
+1. Setup & Running:
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 python -m pip install --upgrade pip
+pip install -r requirements.txt
+python -m spacy download en_core_web_sm
+```
+
+
+2. Install dependencies:
+
+```bash
 pip install -r requirements.txt
 python -m spacy download en_core_web_sm
 ```

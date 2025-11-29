@@ -1,8 +1,9 @@
 python-dateutil
-pymongo
+pymongo[srv]
 requests
 beautifulsoup4
 python-dotenv
 spacy
 langdetect
 lxml
+certifi
