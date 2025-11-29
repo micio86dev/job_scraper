@@ -7,3 +7,4 @@ spacy
 langdetect
 lxml
 certifi
+openai

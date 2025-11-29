@@ -17,6 +17,7 @@ load_dotenv()
 ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")
 ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY")
 JOOBLE_KEY = os.getenv("JOOBLE_KEY")
+AI_BACKEND = os.getenv("AI_BACKEND", "openai")  # openai | ollama | fallback
 
 LANG_WHITELIST = {"en", "es", "fr", "de", "it"}
 
@@ -53,6 +54,137 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
+# ============ AI EXTRACTION (NEW!) ============
+
+def extract_with_openai(title: str, description: str) -> dict:
+    """Extract structured data using OpenAI API"""
+    try:
+        import openai
+    except ImportError:
+        logging.error("OpenAI not installed. Run: pip install openai")
+        return {}
+    
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    
+    if not openai.api_key:
+        logging.error("OPENAI_API_KEY not found in .env")
+        return {}
+    
+    # Prepare tech skills list for prompt
+    skills_list = ", ".join(sorted(TECH_SKILLS))
+    
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{
+                "role": "system",
+                "content": "You are an expert HR analyst. Extract structured data from job postings. Return ONLY valid JSON."
+            }, {
+                "role": "user",
+                "content": f"""Analyze this job posting:
+
+Title: {title}
+Description: {description[:3000]}
+
+Extract as JSON:
+{{
+  "skills": ["python", "react", "docker"],
+  "seniority": "junior|mid|senior|lead|intern|null",
+  "remote": true,
+  "salary_min": 30000,
+  "salary_max": 50000,
+  "location": "City, Country",
+  "requirements": ["requirement1", "requirement2"],
+  "benefits": ["benefit1", "benefit2"],
+  "language": "it|en|es|fr|de"
+}}
+
+Rules:
+- skills: ONLY extract skills from this list (lowercase): {skills_list}
+- Look for these exact terms in the job description
+- seniority: choose best match or null
+- salary: numbers only, null if not found
+- remote: true if mentions remote/work from home/remoto/télétravail
+- language: detect main language of description (it/en/es/fr/de)"""
+            }],
+            response_format={"type": "json_object"},
+            temperature=0.1
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        
+        # Filter skills to ensure they're in TECH_SKILLS
+        if result.get("skills"):
+            result["skills"] = [s.lower() for s in result["skills"] if s.lower() in TECH_SKILLS]
+        
+        result['ai_backend'] = 'openai'
+        return result
+        
+    except Exception as e:
+        logging.error(f"OpenAI extraction failed: {e}")
+        return {}
+
+
+def extract_with_ollama(title: str, description: str) -> dict:
+    """Extract structured data using local Ollama"""
+    try:
+        import ollama
+    except ImportError:
+        logging.error("Ollama not installed. Run: pip install ollama")
+        return {}
+    
+    prompt = f"""Analyze this job posting and extract information as valid JSON only.
+
+Title: {title}
+Description: {description[:3000]}
+
+Extract and return ONLY valid JSON:
+{{
+  "skills": ["python", "react"],
+  "seniority": "junior|mid|senior|lead|intern|null",
+  "remote": true,
+  "salary_min": 30000,
+  "salary_max": 50000,
+  "location": "Milano, Italy",
+  "requirements": ["Bachelor's degree"],
+  "benefits": ["Remote work"],
+  "language": "it"
+}}"""
+
+    try:
+        response = ollama.chat(
+            model='llama3.2',
+            messages=[{'role': 'user', 'content': prompt}],
+            format='json',
+            options={'temperature': 0.1}
+        )
+        
+        result = json.loads(response['message']['content'])
+        result['ai_backend'] = 'ollama'
+        return result
+        
+    except Exception as e:
+        logging.error(f"Ollama extraction failed: {e}")
+        return {}
+
+
+def extract_job_data_with_ai(title: str, description: str) -> dict:
+    """Main AI extraction - returns dict with extracted fields"""
+    
+    if not title or not description:
+        return {}
+    
+    backend = AI_BACKEND.lower()
+    
+    if backend == "openai":
+        return extract_with_openai(title, description)
+    elif backend == "ollama":
+        return extract_with_ollama(title, description)
+    else:
+        # No AI, will use fallback extraction
+        return {}
+
 
 # ============ HELPERS ============
 def hash_text(s: str) -> str:
@@ -164,19 +296,20 @@ def save_job(jobs_col, job: dict):
             "description": job["description"],
             "company_id": job["company_ref"],
             "published": job["published"],
-            "salary_min": None,
-            "salary_max": None,
-            "location": None,
-            "remote": False,
+            "salary_min": job.get("salary_min"),
+            "salary_max": job.get("salary_max"),
+            "location": job.get("location"),
+            "remote": job.get("remote", False),
             "skills": job["skills"],
             "experience_level": job["seniority"],
             "language": job["language"],
-            "email": job["email"],
+            "email": job.get("email"),
             "link": job["link"],
             "raw": job["raw"],
             "updated_at": datetime.now(),
-            "requirements": [],
-            "benefits": [],
+            "requirements": job.get("requirements", []),
+            "benefits": job.get("benefits", []),
+            "ai_backend": job.get("ai_backend"),
         }
 
         # Use upsert to either insert or update
@@ -305,209 +438,71 @@ def fetch_rss(url: str) -> List[dict]:
     return out
 
 
-def fetch_simplyhired(query="developer"):
-    url = f"https://www.simplyhired.com/search?q={query}"
-    try:
-        r = requests.get(url, timeout=30)
-    except Exception as e:
-        logging.error(f"SimplyHired fetch error: {e}")
-        return []
-        
-    soup = BeautifulSoup(r.text, "html.parser")
-    out = []
-
-    for job in soup.select("div.SerpJob-jobCard"):
-        link_tag = job.select_one("a.SerpJob-link")
-        title_tag = job.select_one("a.SerpJob-link span")
-        company_tag = job.select_one(".JobPosting-labelWithIcon span")
-        date_tag = job.select_one(".JobPosting-labelWithIcon time")
-        desc_tag = job.select_one(".JobPosting-snippet")
-
-        link = "https://www.simplyhired.com" + link_tag["href"] if link_tag else None
-        out.append({
-            "link": link,
-            "title": title_tag.text.strip() if title_tag else None,
-            "description": desc_tag.text.strip() if desc_tag else "",
-            "company": company_tag.text.strip() if company_tag else None,
-            "published": (
-                date_tag["datetime"]
-                if date_tag and date_tag.has_attr("datetime")
-                else None
-            ),
-            "salary": None,
-            "raw": {},
-        })
-
-    return out
+# Removed non-working scrapers - keeping only reliable API/RSS sources
 
 
-def fetch_indeed_it_rss() -> List[dict]:
-    """Fetch jobs from Indeed.it via RSS feed (more reliable than scraping)"""
-    # Indeed RSS format: https://it.indeed.com/rss?q=developer&l=italia
-    url = "https://it.indeed.com/rss?q=developer&l=italia"
-    jobs = fetch_rss(url)
-    print(f"     Indeed.it RSS returned {len(jobs)} jobs")
-    return jobs
-
-
-def fetch_linkedin_jobs_it() -> List[dict]:
-    """
-    Fetch IT jobs from LinkedIn Jobs Italia
-    Note: LinkedIn heavily uses JavaScript, so we use their RSS when available
-    """
-    # LinkedIn doesn't provide public RSS, so we skip for now
-    # Could integrate LinkedIn Jobs API if we have credentials
-    return []
-
-
-def fetch_tecnolavoro_it() -> List[dict]:
-    """Fetch from Tecnolavoro.it - Italian tech job board"""
-    url = "https://www.tecnolavoro.it/annunci-lavoro/sviluppatore"
-    try:
-        r = requests.get(url, timeout=30, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-    except Exception as e:
-        logging.error(f"Tecnolavoro.it fetch error: {e}")
-        return []
-    
-    soup = BeautifulSoup(r.text, "html.parser")
-    out = []
-    
-    # Try multiple possible selectors
-    job_cards = soup.select("article.job-card") or soup.select("div.job-listing") or soup.select("div[class*='job']")
-    
-    for job in job_cards[:50]:  # Limit to first 50
-        try:
-            title_tag = job.select_one("h2 a, h3 a, a.job-title")
-            company_tag = job.select_one("span.company, div.company-name, span[class*='company']")
-            desc_tag = job.select_one("p.description, div.description, div[class*='desc']")
-            location_tag = job.select_one("span.location, div.location, span[class*='location']")
-            
-            link = title_tag.get("href") if title_tag else None
-            if link and not link.startswith("http"):
-                link = "https://www.tecnolavoro.it" + link
-            
-            out.append({
-                "link": link,
-                "title": title_tag.text.strip() if title_tag else None,
-                "description": desc_tag.text.strip() if desc_tag else "",
-                "company": company_tag.text.strip() if company_tag else None,
-                "published": None,
-                "salary": None,
-                "raw": {"location": location_tag.text.strip() if location_tag else None},
-            })
-        except Exception as e:
-            continue
-    
-    return out
-
-
-def fetch_lavoroitalia_it() -> List[dict]:
-    """Fetch from LavoroItalia.it"""
-    url = "https://www.lavoroitalia.it/offerte-lavoro/informatica.html"
-    try:
-        r = requests.get(url, timeout=30, headers={
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        })
-    except Exception as e:
-        logging.error(f"LavoroItalia.it fetch error: {e}")
-        return []
-    
-    soup = BeautifulSoup(r.text, "html.parser")
-    out = []
-    
-    job_cards = soup.select("div.offer-item, article.job, div[class*='job-item']")
-    
-    for job in job_cards[:50]:
-        try:
-            title_tag = job.select_one("h2 a, h3 a, a[class*='title']")
-            company_tag = job.select_one("span.company, div[class*='company']")
-            desc_tag = job.select_one("p, div[class*='description']")
-            
-            link = title_tag.get("href") if title_tag else None
-            if link and not link.startswith("http"):
-                link = "https://www.lavoroitalia.it" + link
-            
-            out.append({
-                "link": link,
-                "title": title_tag.text.strip() if title_tag else None,
-                "description": desc_tag.text.strip() if desc_tag else "",
-                "company": company_tag.text.strip() if company_tag else None,
-                "published": None,
-                "salary": None,
-                "raw": {},
-            })
-        except Exception as e:
-            continue
-    
-    return out
-
-
-def fetch_monster_it_rss() -> List[dict]:
-    """Fetch jobs from Monster.it via RSS - more reliable"""
-    # Monster Italy tech jobs RSS
-    urls = [
-        "https://www.monster.it/rss/jobs/q-developer",
-        "https://www.monster.it/rss/jobs/q-programmatore",
-        "https://www.monster.it/rss/jobs/q-software-engineer",
-    ]
-    
-    all_jobs = []
-    for url in urls:
-        try:
-            jobs = fetch_rss(url)
-            all_jobs.extend(jobs)
-        except Exception as e:
-            logging.warning(f"Error fetching Monster RSS {url}: {e}")
-            continue
-    
-    return all_jobs
-
-
-def fetch_glassdoor_it() -> List[dict]:
-    """Fetch from Glassdoor Italy RSS"""
-    url = "https://www.glassdoor.it/Job/developer-jobs-SRCH_KO0,9.htm?radius=100"
-    # Glassdoor is heavily JS-based, skip for now unless we find RSS
-    return []
-
-
-# ============ PIPELINE ============
+# ============ PIPELINE (MODIFIED WITH AI!) ============
 def process_job(companies_col, jobs_col, raw: dict):
     pub = parse_date(raw.get("published") or "")
     now = datetime.now(timezone.utc)
-    if not pub or pub < now - timedelta(days=1):
+    if not pub or pub < now - timedelta(days=60):  # Changed to 60 days
         return
 
     desc = raw.get("description") or ""
     title = raw.get("title") or ""
 
-    # skills
-    skills = extract_tech_skills(desc)
-    if not skills:
-        skills = extract_skills_spacy(desc)
+    if not title or not desc:
+        return
 
-    # seniority
-    seniority = extract_seniority(desc + " " + title)
-    if not seniority:
-        title_lower = title.lower()
-        if "junior" in title_lower:
-            seniority = "junior"
-        elif "senior" in title_lower:
-            seniority = "senior"
-        elif re.search(r"\b(i|ii|iii|iv|v)\b", title_lower):
-            seniority = "mid"
+    # ===== AI EXTRACTION (NEW!) =====
+    ai_data = extract_job_data_with_ai(title, desc)
+    
+    # If AI extraction worked, use it
+    if ai_data and ai_data.get("skills"):
+        skills = ai_data.get("skills", [])
+        seniority = ai_data.get("seniority")
+        remote = ai_data.get("remote", False)
+        salary_min = ai_data.get("salary_min")
+        salary_max = ai_data.get("salary_max")
+        location = ai_data.get("location")
+        requirements = ai_data.get("requirements", [])
+        benefits = ai_data.get("benefits", [])
+        lang = ai_data.get("language")
+        ai_backend = ai_data.get("ai_backend", "none")
+    else:
+        # Fallback to original extraction methods
+        skills = extract_tech_skills(desc)
+        if not skills:
+            skills = extract_skills_spacy(desc)
+        
+        seniority = extract_seniority(desc + " " + title)
+        if not seniority:
+            title_lower = title.lower()
+            if "junior" in title_lower:
+                seniority = "junior"
+            elif "senior" in title_lower:
+                seniority = "senior"
+            elif re.search(r"\b(i|ii|iii|iv|v)\b", title_lower):
+                seniority = "mid"
+        
+        remote = False
+        salary_min = None
+        salary_max = None
+        location = None
+        requirements = []
+        benefits = []
+        ai_backend = "fallback"
+        
+        # Language detection
+        try:
+            lang = detect(desc)
+        except LangDetectException:
+            lang = None
+        if lang not in LANG_WHITELIST:
+            lang = None
 
-    # company
+    # Company
     comp_ref = upsert_company(companies_col, raw.get("company"), raw.get("raw") or {})
-
-    # language
-    try:
-        lang = detect(desc)
-    except LangDetectException:
-        lang = None
-    if lang not in LANG_WHITELIST:
-        lang = None
 
     job_doc = {
         "link": raw.get("link"),
@@ -517,15 +512,22 @@ def process_job(companies_col, jobs_col, raw: dict):
         "company_ref": comp_ref,
         "published": pub,
         "salary": raw.get("salary"),
+        "salary_min": salary_min,
+        "salary_max": salary_max,
+        "location": location,
+        "remote": remote,
         "skills": sorted(set(skills)),
         "seniority": seniority,
         "language": lang,
         "email": extract_email(desc),
+        "requirements": requirements,
+        "benefits": benefits,
+        "ai_backend": ai_backend,
         "raw": raw,
     }
 
     print(
-        f"[IMPORT] {title} @ {raw.get('company')} ({pub.date()}) [{lang}] [{seniority}] -> {raw.get('link')}"
+        f"[IMPORT] {title[:40]}... @ {raw.get('company', 'N/A')[:20]} | {seniority or 'N/A'} | {lang or 'N/A'} | AI:{ai_backend}"
     )
     save_job(jobs_col, job_doc)
 
@@ -541,12 +543,16 @@ def run():
     
     if not db_name:
         print("⚠️  MONGO_DB not found in .env file, will try to use default database from URI")
-        
+    
+    print("=" * 70)
+    print("🚀 JOB IMPORTER WITH AI EXTRACTION")
+    print("=" * 70)
+    print(f"🤖 AI Backend: {AI_BACKEND}")
     print(f"🔗 Connecting to MongoDB...")
     print(f"   Database: {db_name or 'default from URI'}")
     
     try:
-        # Connect to MongoDB - let pymongo handle TLS automatically
+        # Connect to MongoDB
         client = MongoClient(mongo_uri, serverSelectionTimeoutMS=10000)
         client.admin.command('ping')
         print("✅ Connected to database")
@@ -560,7 +566,7 @@ def run():
         companies_col = db["Company"]
         jobs_col = db["Job"]
         
-        # Test connection with a simple query
+        # Test connection
         test_count = companies_col.count_documents({})
         print(f"📊 Current companies in DB: {test_count}")
         
@@ -583,29 +589,6 @@ def run():
         print(f"  - Remotive: {len(remotive_jobs)} jobs")
         all_jobs += remotive_jobs
         
-        sh_jobs = fetch_simplyhired("developer")
-        print(f"  - SimplyHired: {len(sh_jobs)} jobs")
-        all_jobs += sh_jobs
-        
-        # Italian job portals
-        print("\n🇮🇹 Fetching from Italian job portals...")
-        
-        indeed_it_jobs = fetch_indeed_it_rss()
-        print(f"  - Indeed.it (RSS): {len(indeed_it_jobs)} jobs")
-        all_jobs += indeed_it_jobs
-        
-        monster_it_jobs = fetch_monster_it_rss()
-        print(f"  - Monster.it (RSS): {len(monster_it_jobs)} jobs")
-        all_jobs += monster_it_jobs
-        
-        tecnolavoro_jobs = fetch_tecnolavoro_it()
-        print(f"  - Tecnolavoro.it: {len(tecnolavoro_jobs)} jobs")
-        all_jobs += tecnolavoro_jobs
-        
-        lavoroitalia_jobs = fetch_lavoroitalia_it()
-        print(f"  - LavoroItalia.it: {len(lavoroitalia_jobs)} jobs")
-        all_jobs += lavoroitalia_jobs
-        
         # RSS feeds
         print("\n📡 Fetching from RSS feeds...")
         rss_jobs = fetch_rss("https://weworkremotely.com/categories/remote-programming-jobs.rss")
@@ -621,7 +604,7 @@ def run():
         all_jobs += rss_jobs
 
         print(f"\n📦 Total jobs fetched: {len(all_jobs)}")
-        print("💾 Processing and saving jobs...\n")
+        print(f"💾 Processing with AI ({AI_BACKEND})...\n")
 
         # Process all jobs
         success_count = 0
@@ -632,15 +615,15 @@ def run():
                 process_job(companies_col, jobs_col, j)
                 success_count += 1
                 if idx % 10 == 0:
-                    print(f"  Progress: {idx}/{len(all_jobs)} jobs processed")
+                    print(f"  📊 Progress: {idx}/{len(all_jobs)} jobs processed")
             except Exception as e:
                 error_count += 1
                 print(f"❌ Error on job {j.get('title', 'Unknown')[:50]}: {str(e)[:100]}")
                 logging.error(f"Error processing job {j.get('link')}: {e}")
 
         print(f"\n✅ Import completed!")
-        print(f"   Success: {success_count}")
-        print(f"   Errors: {error_count}")
+        print(f"   ✓ Success: {success_count}")
+        print(f"   ✗ Errors: {error_count}")
         
     except Exception as e:
         print(f"❌ Fatal error: {e}")
