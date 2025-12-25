@@ -1,0 +1,59 @@
+import requests
+import logging
+from typing import List, Dict
+from .base_scraper import BaseScraper
+
+logger = logging.getLogger(__name__)
+
+class AdzunaScraper(BaseScraper):
+    """Scraper for Adzuna API (Supports many countries)"""
+    
+    COUNTRY_MAP = {
+        "en": "gb", # or us, ca, etc.
+        "it": "it",
+        "es": "es",
+        "fr": "fr",
+        "de": "de"
+    }
+
+    def __init__(self, app_id: str, app_key: str):
+        self.app_id = app_id
+        self.app_key = app_key
+        self.base_url = "https://api.adzuna.com/v1/api/jobs"
+
+    async def scrape(self, keyword: str, lang: str) -> List[Dict]:
+        country = self.COUNTRY_MAP.get(lang, "gb")
+        url = f"{self.base_url}/{country}/search/1"
+        
+        params = {
+            "app_id": self.app_id,
+            "app_key": self.app_key,
+            "what": keyword,
+            "results_per_page": 50,
+            "content-type": "application/json"
+        }
+        
+        if not self.app_id or not self.app_key:
+            logger.warning("Adzuna credentials missing, skipping.")
+            return []
+
+        try:
+            response = requests.get(url, params=params, timeout=10)
+            response.raise_for_status()
+            data = response.json()
+            
+            jobs = []
+            for item in data.get('results', []):
+                jobs.append({
+                    "title": item.get('title'),
+                    "company": {"name": item.get('company', {}).get('display_name')},
+                    "description": item.get('description'),
+                    "link": item.get('redirect_url'),
+                    "location_raw": item.get('location', {}).get('display_name'),
+                    "source": "Adzuna",
+                    "original_language": lang
+                })
+            return jobs
+        except Exception as e:
+            logger.error(f"Error scraping Adzuna: {e}")
+            return []

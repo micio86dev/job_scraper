@@ -1,10 +1,8 @@
-python-dateutil
+python-dotenv
 pymongo[srv]
 requests
 beautifulsoup4
-python-dotenv
-spacy
-langdetect
 lxml
-certifi
 openai
+googlemaps
+asyncio

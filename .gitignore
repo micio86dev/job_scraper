@@ -1,3 +1,29 @@
-venv
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.venv
+
+# Logs
+*.log
+logs/
+
+# Environment
 .env
-jobs_import.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Database
+*.db
+
+# OS
+.DS_Store
+Thumbs.db
