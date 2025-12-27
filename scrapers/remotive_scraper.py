@@ -29,7 +29,8 @@ class RemotiveScraper(BaseScraper):
                     "link": item.get('url'),
                     "location_raw": item.get('candidate_required_location'),
                     "source": "Remotive",
-                    "original_language": "en" # Remotive is primarily EN
+                    "original_language": "en", # Remotive is primarily EN
+                    "published_at": item.get('publication_date')
                 })
             return jobs
         except Exception as e:

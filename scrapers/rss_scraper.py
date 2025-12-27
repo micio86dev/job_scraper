@@ -34,7 +34,8 @@ class RSSScraper(BaseScraper):
                         "description": item.find('description').text if item.find('description') else "",
                         "link": item.find('link').text if item.find('link') else "",
                         "source": "RSS Feed",
-                        "original_language": lang
+                        "original_language": lang,
+                        "published_at": item.find('pubDate').text if item.find('pubDate') else None
                     })
             except Exception as e:
                 logger.error(f"Error scraping RSS {url}: {e}")

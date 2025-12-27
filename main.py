@@ -3,7 +3,8 @@ import os
 import sys
 import logging
 import asyncio
-from datetime import datetime
+import argparse
+from datetime import datetime, date
 from dotenv import load_dotenv
 
 from database.mongo_client import MongoDBClient
@@ -30,7 +31,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class JobScraperOrchestrator:
-    def __init__(self):
+    def __init__(self, languages=None, limit_per_language=None):
         self.db_client = MongoDBClient(
             uri=os.getenv('MONGO_URI'),
             database=os.getenv('MONGO_DB', 'itjobhub')
@@ -59,21 +60,78 @@ class JobScraperOrchestrator:
             JobisJobScraper()
         ]
         
-        self.languages = ['en', 'it', 'es', 'fr', 'de']
+        self.languages = languages or ['en', 'it', 'es', 'fr', 'de']
+        self.limit_per_language = limit_per_language
         self.keywords = ['python', 'javascript', 'java', 'frontend', 'backend', 'fullstack', 'devops']
 
-    async def run(self):
-        logger.info("Starting job scraper run...")
+    def is_published_today(self, pub_date):
+        if not pub_date:
+            return False
         
-        for scraper in self.scrapers:
-            for lang in self.languages:
+        if isinstance(pub_date, str):
+            # Clean string
+            pub_date = pub_date.strip()
+            # Try common formats
+            fmts = [
+                '%Y-%m-%dT%H:%M:%SZ', 
+                '%Y-%m-%dT%H:%M:%S',
+                '%Y-%m-%d %H:%M:%S', 
+                '%a, %d %b %Y %H:%M:%S %z',
+                '%a, %d %b %Y %H:%M:%S %Z',
+                '%Y-%m-%d'
+            ]
+            for fmt in fmts:
+                try:
+                    dt = datetime.strptime(pub_date, fmt)
+                    return dt.date() == date.today()
+                except ValueError:
+                    continue
+            
+            # Fallback: check if the string contains today's date in YYYY-MM-DD format
+            today_str = date.today().strftime('%Y-%m-%d')
+            if today_str in pub_date:
+                return True
+                
+            logger.warning(f"Could not parse date: {pub_date}")
+            return False
+        elif isinstance(pub_date, datetime):
+            return pub_date.date() == date.today()
+        elif isinstance(pub_date, date):
+            return pub_date == date.today()
+        
+        return False
+
+    async def run(self):
+        logger.info(f"Starting job scraper run for languages: {self.languages}")
+        today = date.today()
+        
+        for lang in self.languages:
+            lang_count = 0
+            logger.info(f"Processing language: {lang}")
+            
+            for scraper in self.scrapers:
+                if self.limit_per_language and lang_count >= self.limit_per_language:
+                    logger.info(f"Reached limit for {lang}, skipping remaining scrapers.")
+                    break
+                    
                 for keyword in self.keywords:
+                    if self.limit_per_language and lang_count >= self.limit_per_language:
+                        break
+                        
                     logger.info(f"Scraping {scraper.__class__.__name__} for {keyword} in {lang}")
                     try:
                         jobs = await scraper.scrape(keyword, lang)
                         logger.info(f"Found {len(jobs)} potential jobs")
                         
                         for job in jobs:
+                            if self.limit_per_language and lang_count >= self.limit_per_language:
+                                break
+                            
+                            # Check if published today
+                            pub_date = job.get('published_at')
+                            if not self.is_published_today(pub_date):
+                                continue
+
                             # 1. Deduplicate
                             if self.deduplicator.is_duplicate(job):
                                 continue
@@ -106,8 +164,11 @@ class JobScraperOrchestrator:
                                     job['seniority_id'] = seniority_id
                                     
                                 # 6. Save Job
-                                self.db_client.insert_job(job)
-                                logger.info(f"Saved new job: {job['title']}")
+                                if self.db_client.insert_job(job):
+                                    logger.info(f"Saved new job: {job['title']}")
+                                    lang_count += 1
+                                else:
+                                    logger.info(f"Job already exists or could not be saved: {job['title']}")
                             
                             # Rate limiting for AI API
                             await asyncio.sleep(1)
@@ -119,5 +180,16 @@ class JobScraperOrchestrator:
         logger.info("Job scraper run finished.")
 
 if __name__ == "__main__":
-    orchestrator = JobScraperOrchestrator()
+    parser = argparse.ArgumentParser(description='Job Scraper Orchestrator')
+    parser.add_argument('--languages', type=str, help='Comma-separated list of languages (e.g. it,en,es)')
+    parser.add_argument('--limit', type=int, help='Limit of total ads per language')
+    
+    args = parser.parse_args()
+    
+    languages = args.languages.split(',') if args.languages else None
+    
+    orchestrator = JobScraperOrchestrator(
+        languages=languages,
+        limit_per_language=args.limit
+    )
     asyncio.run(orchestrator.run())

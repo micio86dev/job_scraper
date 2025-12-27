@@ -1,6 +1,7 @@
 import requests
 from bs4 import BeautifulSoup
 import logging
+from datetime import datetime
 from typing import List, Dict
 from .base_scraper import BaseScraper
 
@@ -36,15 +37,21 @@ class JobisJobScraper(BaseScraper):
                 title_elem = card.select_one('.job-title')
                 company_elem = card.select_one('.company')
                 link_elem = card.select_one('a[href*="/job/"]')
+                date_elem = card.select_one('span.date')
                 
                 if title_elem and link_elem:
+                    date_text = date_elem.text.strip().lower() if date_elem else ""
+                    # Basic normalization for "today" in different languages
+                    is_today = any(word in date_text for word in ['oggi', 'today', 'hoy', 'aujourd', 'heute', 'just now', 'ora'])
+                    
                     jobs.append({
                         "title": title_elem.text.strip(),
                         "company": {"name": company_elem.text.strip() if company_elem else "Unknown"},
                         "link": base_url + link_elem['href'] if link_elem['href'].startswith('/') else link_elem['href'],
                         "description": "Scraped from JobisJob. Full details at link.",
                         "source": "JobisJob (Scraping)",
-                        "original_language": lang
+                        "original_language": lang,
+                        "published_at": datetime.now().strftime('%Y-%m-%d') if is_today else "older"
                     })
             return jobs
         except Exception as e:

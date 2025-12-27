@@ -51,7 +51,8 @@ class AdzunaScraper(BaseScraper):
                     "link": item.get('redirect_url'),
                     "location_raw": item.get('location', {}).get('display_name'),
                     "source": "Adzuna",
-                    "original_language": lang
+                    "original_language": lang,
+                    "published_at": item.get('created')
                 })
             return jobs
         except Exception as e:
