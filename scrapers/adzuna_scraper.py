@@ -21,18 +21,23 @@ class AdzunaScraper(BaseScraper):
         self.app_key = app_key
         self.base_url = "https://api.adzuna.com/v1/api/jobs"
 
-    async def scrape(self, keyword: str, lang: str) -> List[Dict]:
-        country = self.COUNTRY_MAP.get(lang, "gb")
+    async def scrape(self, keyword: str = None, lang: str = "it", category: str = "it-jobs") -> List[Dict]:
+        country = self.COUNTRY_MAP.get(lang, "it")
         url = f"{self.base_url}/{country}/search/1"
         
         params = {
             "app_id": self.app_id,
             "app_key": self.app_key,
-            "what": keyword,
             "results_per_page": 50,
             "content-type": "application/json"
         }
         
+        if keyword:
+            params["what"] = keyword
+        
+        if category:
+            params["category"] = category
+            
         if not self.app_id or not self.app_key:
             logger.warning("Adzuna credentials missing, skipping.")
             return []

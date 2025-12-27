@@ -7,7 +7,7 @@ Fetch jobs from multiple APIs, scrapers, and RSS feeds, perform AI-based categor
 - **AI Categorization**: Uses OpenAI to extract structured data (skills, seniority, formatted address) from job descriptions.
 - **Geocoding**: Converts company addresses to GPS coordinates using Google Maps API.
 - **Deduplication**: Ensures the same job link isn't imported twice.
-- **Multi-source**: Fetches from Remotive, Adzuna, JobisJob, and various RSS feeds.
+- **Multi-source**: Fetches from Remotive, Adzuna, JobisJob, InfoJobs, Jooble API, and various RSS feeds.
 
 ## Setup
 
