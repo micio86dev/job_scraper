@@ -21,9 +21,9 @@ class AdzunaScraper(BaseScraper):
         self.app_key = app_key
         self.base_url = "https://api.adzuna.com/v1/api/jobs"
 
-    async def scrape(self, keyword: str = None, lang: str = "it", category: str = "it-jobs") -> List[Dict]:
+    async def scrape(self, keyword: str = None, lang: str = "it", category: str = "it-jobs", page: int = 1) -> List[Dict]:
         country = self.COUNTRY_MAP.get(lang, "it")
-        url = f"{self.base_url}/{country}/search/1"
+        url = f"{self.base_url}/{country}/search/{page}"
         
         params = {
             "app_id": self.app_id,

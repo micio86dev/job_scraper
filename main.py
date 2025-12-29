@@ -190,15 +190,34 @@ class JobScraperOrchestrator:
                     logger.info(f"Reached limit for {lang}, skipping remaining scrapers.")
                     break
                 
-                # Special handling for Adzuna to do a broad search
+                # Special handling for Adzuna to do a broad search with pagination
                 if isinstance(scraper, AdzunaScraper):
-                    logger.info(f"Scraping {scraper.__class__.__name__} for category 'it-jobs' in {lang}")
-                    try:
-                        jobs = await scraper.scrape(lang=lang, category="it-jobs")
-                        logger.info(f"Found {len(jobs)} potential jobs")
-                        self.lang_count = await self.process_job_list(jobs, lang, self.lang_count)
-                    except Exception as e:
-                        logger.error(f"Error in broad scraper: {e}")
+                    page = 1
+                    while True:
+                        if self.limit_per_language and self.lang_count >= self.limit_per_language:
+                            break
+                            
+                        logger.info(f"Scraping {scraper.__class__.__name__} page {page} for category 'it-jobs' in {lang}")
+                        try:
+                            jobs = await scraper.scrape(lang=lang, category="it-jobs", page=page)
+                            if not jobs:
+                                logger.info("No more jobs found on this page, stopping Adzuna.")
+                                break
+                                
+                            logger.info(f"Found {len(jobs)} potential jobs")
+                            old_count = self.lang_count
+                            self.lang_count = await self.process_job_list(jobs, lang, self.lang_count)
+                            
+                            if self.lang_count == old_count:
+                                logger.info("No new jobs added from this page, might be all duplicates or too old. Trying one more page.")
+                                if page > 5: # Safety break
+                                    break
+                                    
+                            page += 1
+                            await asyncio.sleep(2) # Be nice to API
+                        except Exception as e:
+                            logger.error(f"Error in broad scraper: {e}")
+                            break
                     continue
 
                 for keyword in self.keywords:

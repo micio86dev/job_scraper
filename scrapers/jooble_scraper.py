@@ -1,7 +1,7 @@
 import requests
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Dict
 from .base_scraper import BaseScraper
 
@@ -19,13 +19,18 @@ class JoobleScraper(BaseScraper):
             # logger.warning("Jooble API Key missing, skipping.")
             return []
             
-        url = f"{self.base_url}{self.api_key}"
+        base_url = "https://it.jooble.org/api" if lang == "it" else "https://jooble.org/api"
+        url = f"{base_url}/{self.api_key}"
         
         # Jooble API treats "language" by the regional endpoint, 
         # but the JSON body can specify location.
         location = "Italy" if lang == "it" else "" # Simplified
         
-        from datetime import timedelta
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        
         payload = {
             "keywords": keyword,
             "location": location,
@@ -33,7 +38,11 @@ class JoobleScraper(BaseScraper):
         }
         
         try:
-            response = requests.post(url, json=payload, timeout=10)
+            # Disable SSL verification for Jooble API as it often has issues in some environments
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            
+            response = requests.post(url, json=payload, headers=headers, timeout=10, verify=False)
             response.raise_for_status()
             data = response.json()
             
