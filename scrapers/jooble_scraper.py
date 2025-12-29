@@ -25,10 +25,11 @@ class JoobleScraper(BaseScraper):
         # but the JSON body can specify location.
         location = "Italy" if lang == "it" else "" # Simplified
         
+        from datetime import timedelta
         payload = {
             "keywords": keyword,
             "location": location,
-            "dateFrom": datetime.now().strftime('%Y-%m-%d')
+            "dateFrom": (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
         }
         
         try:

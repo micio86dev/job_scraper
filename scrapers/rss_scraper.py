@@ -17,9 +17,12 @@ class RSSScraper(BaseScraper):
         urls = self.rss_urls.get(lang, [])
         all_jobs = []
         
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
         for url in urls:
             try:
-                response = requests.get(url, timeout=10)
+                response = requests.get(url, headers=headers, timeout=10)
                 soup = BeautifulSoup(response.content, 'xml')
                 items = soup.find_all('item')
                 

@@ -1,13 +1,13 @@
 import json
 import logging
 from typing import Dict, Optional
-from openai import OpenAI
+from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
 class JobCategorizer:
     def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
-        self.client = OpenAI(api_key=api_key)
+        self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
 
     async def categorize_job(self, title: str, description: str) -> Optional[Dict]:
@@ -31,7 +31,7 @@ class JobCategorizer:
         """
         
         try:
-            response = self.client.chat.completions.create(
+            response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": "You are a professional technical recruiter and data analyst."},

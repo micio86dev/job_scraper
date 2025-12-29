@@ -33,7 +33,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class JobScraperOrchestrator:
-    def __init__(self, languages=None, limit_per_language=None):
+    def __init__(self, languages=None, limit_per_language=None, days_window=1):
         self.db_client = MongoDBClient(
             uri=os.getenv('MONGO_URI'),
             database=os.getenv('MONGO_DB', 'itjobhub')
@@ -44,6 +44,7 @@ class JobScraperOrchestrator:
         )
         self.geocoder = Geocoder(api_key=os.getenv('GOOGLE_MAPS_API_KEY'))
         self.deduplicator = JobDeduplicator(self.db_client)
+        self.days_window = days_window
         
         # Initialize scrapers
         self.scrapers = [
@@ -75,10 +76,13 @@ class JobScraperOrchestrator:
             'informatica', 'it specialist', 'software', 'programmatore', 'sviluppatore'
         ]
 
-    def is_published_today(self, pub_date):
+    def is_published_today(self, pub_date, days_window=0):
         if not pub_date:
             return False
         
+        if pub_date == "older":
+            return days_window > 0
+
         if isinstance(pub_date, str):
             # Clean string
             pub_date = pub_date.strip()
@@ -89,12 +93,17 @@ class JobScraperOrchestrator:
                 '%Y-%m-%d %H:%M:%S', 
                 '%a, %d %b %Y %H:%M:%S %z',
                 '%a, %d %b %Y %H:%M:%S %Z',
-                '%Y-%m-%d'
+                '%Y-%m-%d',
+                '%d %b %Y'
             ]
             for fmt in fmts:
                 try:
                     dt = datetime.strptime(pub_date, fmt)
-                    return dt.date() == date.today()
+                    if dt.tzinfo:
+                        dt = dt.replace(tzinfo=None)
+                    
+                    diff = (datetime.now() - dt).days
+                    return diff <= days_window
                 except ValueError:
                     continue
             
@@ -103,12 +112,15 @@ class JobScraperOrchestrator:
             if today_str in pub_date:
                 return True
                 
-            logger.warning(f"Could not parse date: {pub_date}")
             return False
         elif isinstance(pub_date, datetime):
-            return pub_date.date() == date.today()
+            if pub_date.tzinfo:
+                pub_date = pub_date.replace(tzinfo=None)
+            diff = (datetime.now() - pub_date).days
+            return diff <= days_window
         elif isinstance(pub_date, date):
-            return pub_date == date.today()
+            diff = (date.today() - pub_date).days
+            return diff <= days_window
         
         return False
 
@@ -117,13 +129,15 @@ class JobScraperOrchestrator:
             if self.limit_per_language and lang_count >= self.limit_per_language:
                 break
             
-            # Check if published today
+            # Check if published recently
             pub_date = job.get('published_at')
-            if not self.is_published_today(pub_date):
+            if not self.is_published_today(pub_date, days_window=self.days_window):
+                logger.debug(f"Skipping job (too old): {job['title']} - {pub_date}")
                 continue
 
             # 1. Deduplicate
             if self.deduplicator.is_duplicate(job):
+                logger.debug(f"Skipping job (duplicate): {job['title']}")
                 continue
             
             # 2. AI Categorize
@@ -206,6 +220,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Job Scraper Orchestrator')
     parser.add_argument('--languages', type=str, help='Comma-separated list of languages (e.g. it,en,es)')
     parser.add_argument('--limit', type=int, help='Limit of total ads per language')
+    parser.add_argument('--days', type=int, default=1, help='Lookback window in days (default: 1)')
     
     args = parser.parse_args()
     
@@ -213,6 +228,7 @@ if __name__ == "__main__":
     
     orchestrator = JobScraperOrchestrator(
         languages=languages,
-        limit_per_language=args.limit
+        limit_per_language=args.limit,
+        days_window=args.days
     )
     asyncio.run(orchestrator.run())

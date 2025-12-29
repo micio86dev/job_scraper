@@ -27,31 +27,30 @@ class InfoJobsScraper(BaseScraper):
             response = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            job_cards = soup.select('.ij-OfferCardContent-description')
+            job_cards = soup.select('.ij-OfferCardContent')
             if not job_cards:
-                # Try fallback selector if the one above is not accurate for all cases
                 job_cards = soup.select('div[class*="ij-OfferCardContent"]')
 
             jobs = []
             for card in job_cards:
-                title_elem = card.select_one('a[class*="title-link"]')
-                company_elem = card.select_one('a[class*="subtitle-link"]')
+                title_elem = card.select_one('a[class*="title-link"]') or card.select_one('.ij-OfferCardContent-description-title a')
+                company_elem = card.select_one('a[class*="subtitle-link"]') or card.select_one('.ij-OfferCardContent-description-subtitle a')
                 
-                # Date is usually in the last li of the list
-                date_elem = None
-                ul_elem = card.select_one('ul[class*="description-list"]')
-                if ul_elem:
-                    list_items = ul_elem.find_all('li')
-                    if list_items:
-                        date_elem = list_items[-1]
+                # Check for date in multiple possible locations
+                date_text = ""
+                date_elem = card.select_one('.ij-OfferCardContent-description-date')
+                if date_elem:
+                    date_text = date_elem.text.strip().lower()
+                else:
+                    ul_elem = card.select_one('ul[class*="description-list"]')
+                    if ul_elem:
+                        list_items = ul_elem.find_all('li')
+                        if list_items:
+                            date_text = list_items[-1].text.strip().lower()
 
                 if title_elem and title_elem.get('href'):
-                    date_text = date_elem.text.strip().lower() if date_elem else ""
                     # Normalize "today" for InfoJobs (e.g. "oggi", "1h fa", etc.)
-                    is_today = any(word in date_text for word in ['oggi', 'ora', 'h fa', 'm fa', 'just now'])
-                    
-                    # Sometimes InfoJobs shows "12 dic", "ieri", etc.
-                    # We only care about today.
+                    is_today = any(word in date_text for word in ['oggi', 'ora', 'h fa', 'm fa', 'just now', 'minuti', 'secondi'])
                     
                     jobs.append({
                         "title": title_elem.text.strip(),
