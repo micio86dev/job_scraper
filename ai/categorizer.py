@@ -24,7 +24,7 @@ class JobCategorizer:
         - seniority: The required seniority level: "Junior", "Mid", "Senior", "Lead", or "Unknown"
         - is_remote: Boolean, true if the job is remote or hybrid
         - formatted_address: The full address of the job location if available, otherwise null
-        - city: The city of the job location if available, otherwise null
+        - city: The city of the job location as a single string if available, otherwise null
         - country: The country of the job location if available, otherwise null
         
         Return ONLY valid JSON.

@@ -47,6 +47,29 @@ Set up a CronJob to run the scraper hourly:
 0 * * * * /path/to/venv/bin/python3 /full/path/to/main.py --limit 50 >> /full/path/to/job_scraper_cron.log 2>&1
 ```
 
+## Developer Tools
+
+### Linting
+To maintain code quality in Python, we recommend using **flake8** or **black**.
+```bash
+# Run lint check
+flake8 .
+```
+
+### Manual Verification
+To verify the scraper logic without performing a full run:
+1. Ensure your `.env` is correctly configured.
+2. Run the main script with a low limit:
+   ```bash
+   python3 main.py --languages it --limit 1
+   ```
+
+### Data Integrity Fixes
+If you encounter date format issues with Prisma, use the provided utility script:
+```bash
+python3 fix_dates.py
+```
+
 ## Logs
 Detailed logs are available in `job_scraper.log` for the application logic and `job_scraper_cron.log` for execution status.
 

@@ -76,17 +76,23 @@ class JobScraperOrchestrator:
             'informatica', 'it specialist', 'software', 'programmatore', 'sviluppatore'
         ]
 
-    def is_published_today(self, pub_date, days_window=0):
+    def parse_date(self, pub_date):
         if not pub_date:
-            return False
+            return None
         
         if pub_date == "older":
-            return days_window > 0
+            return None
+
+        if isinstance(pub_date, datetime):
+            if pub_date.tzinfo:
+                return pub_date.replace(tzinfo=None)
+            return pub_date
+        
+        if isinstance(pub_date, date):
+            return datetime.combine(pub_date, datetime.min.time())
 
         if isinstance(pub_date, str):
-            # Clean string
             pub_date = pub_date.strip()
-            # Try common formats
             fmts = [
                 '%Y-%m-%dT%H:%M:%SZ', 
                 '%Y-%m-%dT%H:%M:%S',
@@ -101,28 +107,27 @@ class JobScraperOrchestrator:
                     dt = datetime.strptime(pub_date, fmt)
                     if dt.tzinfo:
                         dt = dt.replace(tzinfo=None)
-                    
-                    diff = (datetime.now() - dt).days
-                    return diff <= days_window
+                    return dt
                 except ValueError:
                     continue
             
             # Fallback: check if the string contains today's date in YYYY-MM-DD format
             today_str = date.today().strftime('%Y-%m-%d')
             if today_str in pub_date:
-                return True
+                return datetime.now()
                 
+        return None
+
+    def is_published_today(self, pub_date, days_window=1):
+        dt = self.parse_date(pub_date)
+        if not dt:
+            # If we can't parse it but it's not None, maybe it's just "today" or similar
+            if isinstance(pub_date, str) and ("today" in pub_date.lower() or "oggi" in pub_date.lower()):
+                return True
             return False
-        elif isinstance(pub_date, datetime):
-            if pub_date.tzinfo:
-                pub_date = pub_date.replace(tzinfo=None)
-            diff = (datetime.now() - pub_date).days
-            return diff <= days_window
-        elif isinstance(pub_date, date):
-            diff = (date.today() - pub_date).days
-            return diff <= days_window
-        
-        return False
+            
+        diff = (datetime.now() - dt).days
+        return diff <= days_window
 
     async def process_job_list(self, jobs, lang, lang_count):
         for job in jobs:
@@ -130,10 +135,13 @@ class JobScraperOrchestrator:
                 break
             
             # Check if published recently
-            pub_date = job.get('published_at')
-            if not self.is_published_today(pub_date, days_window=self.days_window):
-                logger.debug(f"Skipping job (too old): {job['title']} - {pub_date}")
+            pub_date_raw = job.get('published_at')
+            if not self.is_published_today(pub_date_raw, days_window=self.days_window):
+                logger.debug(f"Skipping job (too old): {job['title']} - {pub_date_raw}")
                 continue
+            
+            # Ensure published_at is a datetime object for the database
+            job['published_at'] = self.parse_date(pub_date_raw) or datetime.utcnow()
 
             # 1. Deduplicate
             if self.deduplicator.is_duplicate(job):
@@ -145,6 +153,12 @@ class JobScraperOrchestrator:
             ai_data = await self.categorizer.categorize_job(job['title'], job['description'])
             
             if ai_data:
+                # Sanitize AI data
+                if isinstance(ai_data.get('city'), list):
+                    ai_data['city'] = str(ai_data['city'][0]) if ai_data['city'] else None
+                elif ai_data.get('city') and not isinstance(ai_data['city'], (str, type(None))):
+                    ai_data['city'] = str(ai_data['city'])
+
                 job.update(ai_data)
                 
                 # 3. Geocode if address exists
