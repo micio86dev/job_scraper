@@ -11,6 +11,7 @@ from database.mongo_client import MongoDBClient
 from ai.categorizer import JobCategorizer
 from utils.deduplicator import JobDeduplicator
 from utils.geocoding import Geocoder
+from utils.description_fetcher import DescriptionFetcher
 from scrapers.remotive_scraper import RemotiveScraper
 from scrapers.adzuna_scraper import AdzunaScraper
 from scrapers.rss_scraper import RSSScraper
@@ -44,6 +45,7 @@ class JobScraperOrchestrator:
         )
         self.geocoder = Geocoder(api_key=os.getenv('GOOGLE_MAPS_API_KEY'))
         self.deduplicator = JobDeduplicator(self.db_client)
+        self.description_fetcher = DescriptionFetcher()
         self.days_window = days_window
         
         # Initialize scrapers
@@ -143,6 +145,17 @@ class JobScraperOrchestrator:
             # Ensure published_at is a datetime object for the database
             job['published_at'] = self.parse_date(pub_date_raw) or datetime.utcnow()
 
+            # Refine description if it's too short (snippet)
+            desc = job.get('description', '')
+            if not desc or len(desc) < 500:
+                logger.info(f"Fetching full description for: {job['title']}")
+                full_desc = await self.description_fetcher.fetch(job['link'])
+                if full_desc:
+                     job['description'] = full_desc
+                     logger.info("Successfully fetched full description")
+                else:
+                     logger.warning("Could not fetch full description, keeping snippet")
+            
             # 1. Deduplicate
             if self.deduplicator.is_duplicate(job):
                 logger.debug(f"Skipping job (duplicate): {job['title']}")
