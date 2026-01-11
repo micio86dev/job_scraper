@@ -22,6 +22,7 @@ class JobCategorizer:
         - language: The primary language of the job posting (e.g., "en", "it", "es", "fr", "de")
         - technical_skills: A list of mandatory technical skills (languages, frameworks, tools)
         - seniority: The required seniority level: "Junior", "Mid", "Senior", "Lead", or "Unknown"
+        - employment_type: The type of employment: "Full-time", "Part-time", "Contract", "Freelance", "Internship", or "Unknown"
         - is_remote: Boolean, true if the job is remote or hybrid
         - formatted_address: The full address of the job location if available, otherwise null
         - city: The city of the job location as a single string if available, otherwise null
