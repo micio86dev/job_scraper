@@ -3,15 +3,15 @@
 Fetch jobs from multiple APIs, scrapers, and RSS feeds, perform AI-based categorization (skills, seniority, location), and save them to MongoDB.
 
 ## Features
-- **Today Only**: Always filters and imports only jobs published on the current date.
+- **Configurable Date Window**: Standardizes imports to a strict window (default: today and yesterday) to ensure freshness.
 - **AI Categorization**: Uses OpenAI to extract structured data (skills, seniority, formatted address) from job descriptions.
 - **Geocoding**: Converts company addresses to GPS coordinates using Google Maps API.
 - **Deduplication**: Ensures the same job link isn't imported twice.
-- **Multi-source**: Fetches from Remotive, Adzuna, JobisJob, InfoJobs, Jooble API, and various RSS feeds.
+- **Multi-source**: Fetches from RemoteOK, Arbeitnow, Adzuna, JobisJob, Jooble, and specific technology RSS feeds (WeWorkRemotely, Himalayas).
 
 ## Setup
 
-1. **Environment**: Create a `.env` file based on `.env.example` and fill in your API keys (OpenAI, Google Maps, Adzuna) and MongoDB URI.
+1. **Environment**: Create a `.env` file based on `.env.example` and fill in your API keys (OpenAI, Google Maps, Adzuna, Jooble) and MongoDB URI.
 
 2. **Installation**:
 ```bash
@@ -22,7 +22,7 @@ pip install -r requirements.txt
 
 ## Usage
 
-Run the scraper using `main.py`. You can specify languages and a limit of jobs per language.
+Run the scraper using `main.py`. You can specify languages, a limit of jobs per language, and the history window.
 
 ### Basic command
 ```bash
@@ -31,20 +31,21 @@ python3 main.py
 
 ### Advanced options
 ```bash
-# Import only Italian and English jobs, with a limit of 10 new jobs per language
-python3 main.py --languages it,en --limit 10
+# Import Italian and English jobs from the last 2 days, limit 10 per language
+python3 main.py --languages it,en --limit 10 --days 1
 ```
 
 **Available Arguments:**
 - `--languages`: Comma-separated list of ISO language codes (e.g., `it,en,es`). Defaults to `en,it,es,fr,de`.
 - `--limit`: The maximum number of *new* jobs to import for each language.
+- `--days`: Lookback window in days (0=today, 1=today/yesterday). Defaults to 1.
 
 ## Automation
 
 Set up a CronJob to run the scraper hourly:
 
 ```bash
-0 * * * * /path/to/venv/bin/python3 /full/path/to/main.py --limit 50 >> /full/path/to/job_scraper_cron.log 2>&1
+0 * * * * /path/to/venv/bin/python3 /full/path/to/main.py --limit 50 --days 1 >> /full/path/to/job_scraper_cron.log 2>&1
 ```
 
 ## Developer Tools
@@ -61,7 +62,7 @@ To verify the scraper logic without performing a full run:
 1. Ensure your `.env` is correctly configured.
 2. Run the main script with a low limit:
    ```bash
-   python3 main.py --languages it --limit 1
+   python3 main.py --languages it --limit 1 --days 1
    ```
 
 ### Data Integrity Fixes
@@ -80,30 +81,30 @@ Detailed logs are available in `job_scraper.log` for the application logic and `
                   │   script      │
                   └──────┬────────┘
                          │
-         ┌───────────────┴───────────────────┐
-         │                                   │        
-         ▼                                   ▼
- ┌───────────────┐                   ┌────────────────┐
- │  Fetch APIs   │                   │   Fetch RSS/WEB│
- │(Adzuna,       │                   │(Jooble,        │
- │ Remotive)     │                   │ JobisJob)      │
- └───────┬───────┘                   └──────────────-─┘
-         │
-         ▼
- ┌───────────────┐
- │ Process Jobs  │
- │ - Date Filter │ <--- Only today's jobs
- │ - Deduplicate │
- │ - AI Enrich   │ (Skills, Seniority, Location)
- │ - Geocode     │
- └───────┬───────┘
-         │
-         ▼
- ┌───────────────┐
- │  Upsert into  │
- │   MongoDB     │
- │ - jobs        │
- │ - companies   │
- │ - seniorities │
- └───────────────┘
+         ┌───────────────┴────────────────────┐
+         │                                    │        
+         ▼                                    ▼
+  ┌───────────────┐                    ┌────────────────┐
+  │  Fetch APIs   │                    │   Fetch RSS    │
+  │(Adzuna, Jooble│                    │(WeWorkRemotely,│
+  │RemoteOK, etc) │                    │ Himalayas)     │
+  └───────┬───────┘                    └──────────────-─┘
+          │
+          ▼
+  ┌───────────────┐
+  │ Process Jobs  │
+  │ - Date Filter │ <--- Strict history window
+  │ - Deduplicate │
+  │ - AI Enrich   │ (Skills, Seniority, Location)
+  │ - Geocode     │
+  └───────┬───────┘
+          │
+          ▼
+  ┌───────────────┐
+  │  Upsert into  │
+  │   MongoDB     │
+  │ - jobs        │
+  │ - companies   │
+  │ - seniorities │
+  └───────────────┘
 ```

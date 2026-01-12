@@ -3,6 +3,7 @@ import asyncio
 from bs4 import BeautifulSoup, Comment
 import logging
 import re
+from markdownify import markdownify as md
 
 logger = logging.getLogger(__name__)
 
@@ -21,24 +22,22 @@ class DescriptionFetcher:
 
     async def fetch(self, url: str) -> str:
         """
-        Fetches the URL and extracts the job description.
+        Fetches the URL and extracts the job description in Markdown format.
         Returns None if extraction fails or content is not found.
         """
         if not url:
             return None
             
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers=self.headers, timeout=self.timeout, ssl=False) as response:
-                    if response.status != 200:
-                        logger.warning(f"Failed to fetch description from {url}: Status {response.status}")
-                        return None
-                    
-                    html = await response.text()
-                    return self._extract_content(html)
-        except Exception as e:
-            logger.warning(f"Error fetching description from {url}: {str(e)}")
+        if not url:
             return None
+            
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=self.headers, timeout=self.timeout, ssl=False) as response:
+                if response.status != 200:
+                    raise Exception(f"HTTP {response.status}")
+                
+                html = await response.text()
+                return self._extract_content(html)
 
     def _extract_content(self, html: str) -> str:
         """
@@ -76,21 +75,20 @@ class DescriptionFetcher:
         if candidates:
             candidates.sort(key=lambda x: x[1], reverse=True)
             best_candidate = candidates[0][0]
-            return self._clean_text(best_candidate.get_text(separator='\n\n'))
+            # Convert the best candidate element to markdown
+            return self._clean_markdown(md(str(best_candidate)))
 
         # 3. Fallback: Body text if nothing else matches (risky, might get garbage)
         body = soup.find('body')
         if body and len(body.get_text(strip=True)) > 300:
-             return self._clean_text(body.get_text(separator='\n\n'))
+             return self._clean_markdown(md(str(body)))
 
         return None
 
-    def _clean_text(self, text: str) -> str:
+    def _clean_markdown(self, text: str) -> str:
         """
-        Clean whitespace and normalize text.
+        Clean whitespace and normalize markdown text.
         """
         # Collapse multiple newlines
         text = re.sub(r'\n\s*\n', '\n\n', text)
-        # Collapse multiple spaces
-        text = re.sub(r'[ \t]+', ' ', text)
         return text.strip()
