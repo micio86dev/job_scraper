@@ -210,10 +210,20 @@ class JobScraperOrchestrator:
             if not desc or len(desc) < 500:
                 logger.info(f"Fetching full description for: {job['title']}")
                 try:
-                    full_desc = await self.description_fetcher.fetch(job["link"])
+                    full_desc, extracted_logo = await self.description_fetcher.fetch(
+                        job["link"]
+                    )
                     if full_desc:
                         job["description"] = full_desc
                         is_markdown = True
+                        if extracted_logo:
+                            if "company" not in job:
+                                job["company"] = {}
+                            if not job["company"].get("logo"):
+                                job["company"]["logo"] = extracted_logo
+                                logger.info(
+                                    f"Updated company logo from description: {extracted_logo}"
+                                )
                         logger.info("Successfully fetched full description")
                     else:
                         logger.warning(
