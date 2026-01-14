@@ -12,6 +12,9 @@ env/
 *.log
 logs/
 
+# Node
+node_modules/
+
 # Environment
 .env
 
