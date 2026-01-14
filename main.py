@@ -211,7 +211,11 @@ class JobScraperOrchestrator:
                 continue
 
             # Ensure published_at is a datetime object for the database
-            job["published_at"] = self.parse_date(pub_date_raw) or datetime.utcnow()
+            import pytz
+
+            job["published_at"] = self.parse_date(pub_date_raw) or datetime.now(
+                pytz.utc
+            )
 
             # Refine description if it's too short (snippet)
             desc = job.get("description", "")
