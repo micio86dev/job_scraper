@@ -20,6 +20,8 @@ from scrapers.jobisjob_scraper import JobisJobScraper
 from scrapers.jooble_scraper import JoobleScraper
 from scrapers.remoteok_scraper import RemoteOKScraper
 from scrapers.arbeitnow_scraper import ArbeitnowScraper
+from scrapers.jobicy_scraper import JobicyScraper
+from scrapers.iprogrammatori_scraper import IProgrammatoriScraper
 
 # Load environment variables
 load_dotenv()
@@ -54,8 +56,10 @@ class JobScraperOrchestrator:
 
         # Initialize scrapers
         self.scrapers = [
-            RemoteOKScraper(),
+            IProgrammatoriScraper(),
             ArbeitnowScraper(),
+            JobicyScraper(),
+            RemoteOKScraper(),
             AdzunaScraper(
                 app_id=os.getenv("ADZUNA_APP_ID"), app_key=os.getenv("ADZUNA_APP_KEY")
             ),
@@ -66,8 +70,9 @@ class JobScraperOrchestrator:
                     "en": [
                         "https://weworkremotely.com/categories/remote-programming-jobs.rss",
                         "https://himalayas.app/jobs/rss",
+                        "https://remotive.io/remote-jobs/feed",
+                        "https://jobicy.com/feed",
                     ],
-                    # "it": [], # Monster.it, Bakeca require further check
                 }
             ),
         ]
@@ -189,6 +194,11 @@ class JobScraperOrchestrator:
             if self.limit_per_language and lang_count >= self.limit_per_language:
                 break
 
+            # GLOBAL VALIDATION: Skip jobs without a link
+            if not job.get("link"):
+                logger.warning(f"Skipping job without link: {job.get('title')}")
+                continue
+
             # STICT FILTER: Check relevance before doing anything else
             if not self.is_relevant_job(job.get("title", "")):
                 logger.debug(f"Skipping irrelevant job: {job.get('title')}")
@@ -288,7 +298,17 @@ class JobScraperOrchestrator:
                 if "is_remote" in ai_data:
                     ai_data["remote"] = bool(ai_data.pop("is_remote"))
 
+                # Preserve original salary if available from scraper
+                original_salary_min = job.get("salary_min")
+                original_salary_max = job.get("salary_max")
+
                 job.update(ai_data)
+
+                # Restore original salary if it was present and strict
+                if original_salary_min is not None:
+                    job["salary_min"] = original_salary_min
+                if original_salary_max is not None:
+                    job["salary_max"] = original_salary_max
 
                 # 3. Geocode and Location Handling
                 # Ensure we have country and city if available from AI
