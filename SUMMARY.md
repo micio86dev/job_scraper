@@ -12,7 +12,7 @@ The IT Job Hub scraper is a focused Python-based automation tool that ensures th
 
 ## Data Sources
 
-- **APIs**: Adzuna, Jooble, RemoteOK, Arbeitnow.
+- **APIs**: **LinkedIn** (via Apify, executed first), Adzuna, Jooble, RemoteOK, Arbeitnow.
 - **Web/RSS**: JobisJob, WeWorkRemotely, Himalayas.app.
 
 ## Maintenance Tools

@@ -7,11 +7,11 @@ Fetch jobs from multiple APIs, scrapers, and RSS feeds, perform AI-based categor
 - **AI Categorization**: Uses OpenAI to extract structured data (skills, seniority, formatted address) from job descriptions.
 - **Geocoding**: Converts company addresses to GPS coordinates using Google Maps API.
 - **Deduplication**: Ensures the same job link isn't imported twice.
-- **Multi-source**: Fetches from RemoteOK, Arbeitnow, Adzuna, JobisJob, Jooble, and specific technology RSS feeds (WeWorkRemotely, Himalayas).
+- **Multi-source**: Fetches from **LinkedIn** (via Apify, executed first), RemoteOK, Arbeitnow, Adzuna, JobisJob, Jooble, and specific technology RSS feeds (WeWorkRemotely, Himalayas).
 
 ## Setup
 
-1. **Environment**: Create a `.env` file based on `.env.example` and fill in your API keys (OpenAI, Google Maps, Adzuna, Jooble) and MongoDB URI.
+1. **Environment**: Create a `.env` file based on `.env.example` and fill in your API keys (OpenAI, Google Maps, Adzuna, Jooble, **Apify**) and MongoDB URI.
 
 2. **Installation**:
 ```bash
@@ -86,8 +86,8 @@ Detailed logs are available in `job_scraper.log` for the application logic and `
          ▼                                    ▼
   ┌───────────────┐                    ┌────────────────┐
   │  Fetch APIs   │                    │   Fetch RSS    │
-  │(Adzuna, Jooble│                    │(WeWorkRemotely,│
-  │RemoteOK, etc) │                    │ Himalayas)     │
+  │(LinkedIn►,    │                    │(WeWorkRemotely,│
+  │Adzuna, Jooble)│                    │ Himalayas)     │
   └───────┬───────┘                    └──────────────-─┘
           │
           ▼
