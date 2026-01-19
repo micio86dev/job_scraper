@@ -23,6 +23,8 @@ from scrapers.arbeitnow_scraper import ArbeitnowScraper
 from scrapers.jobicy_scraper import JobicyScraper
 from scrapers.iprogrammatori_scraper import IProgrammatoriScraper
 from scrapers.linkedin_scraper import LinkedInScraper
+from scrapers.techmap_scraper import TechMapScraper
+from scrapers.jobscollider_scraper import JobsColliderScraper
 
 # Load environment variables
 load_dotenv()
@@ -77,6 +79,8 @@ class JobScraperOrchestrator:
                     ],
                 }
             ),
+            # TechMapScraper(api_token=os.getenv("TECHMAP_API_TOKEN")),
+            # JobsColliderScraper(api_token=os.getenv("JOBSCOLLIDER_API_TOKEN")),
         ]
 
         self.languages = languages or ["en", "it", "es", "fr", "de"]
