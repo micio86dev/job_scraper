@@ -15,15 +15,23 @@ class MongoDBClient:
             raise ValueError("MONGO_URI not found in environment variables")
 
         try:
+            # Detect if we should use TLS (default for Atlas, maybe not for local)
+            use_tls = "localhost" not in uri and "127.0.0.1" not in uri
+
             # For debugging SSL errors on macOS
-            self.client = MongoClient(
-                uri,
-                tls=True,
-                tlsCAFile=certifi.where(),
-                connectTimeoutMS=10000,
-                socketTimeoutMS=10000,
-                serverSelectionTimeoutMS=10000,
-            )
+            connection_args = {
+                "connectTimeoutMS": 10000,
+                "socketTimeoutMS": 10000,
+                "serverSelectionTimeoutMS": 10000,
+            }
+
+            if use_tls:
+                connection_args["tls"] = True
+                connection_args["tlsCAFile"] = certifi.where()
+            else:
+                connection_args["tls"] = False
+
+            self.client = MongoClient(uri, **connection_args)
             # Trigger connection
             self.client.admin.command("ping")
             self.db = self.client[database]
