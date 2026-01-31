@@ -1,6 +1,6 @@
-# Job Scraper - IT Job Hub
+# Job Scraper - DevBoards.io
 
-The IT Job Hub scraper is a focused Python-based automation tool that ensures the platform's job board is always fresh and high-quality.
+The DevBoards.io scraper is a focused Python-based automation tool that ensures the platform's job board is always fresh and high-quality.
 
 ## Workflow
 
