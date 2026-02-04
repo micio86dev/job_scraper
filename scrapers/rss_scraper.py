@@ -40,7 +40,7 @@ class RSSScraper(BaseScraper):
                             "company": {
                                 "name": "Unknown"
                             },  # RSS often lacks company in standard fields
-                            "description": (
+                            "description": self.clean_description(
                                 item.find("description").text
                                 if item.find("description")
                                 else ""

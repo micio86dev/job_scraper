@@ -73,7 +73,7 @@ class JobsColliderScraper(BaseScraper):
                             "name": entry.get("author", "JobsCollider"),
                             "logo": None,
                         },
-                        "description": entry.description,
+                        "description": self.clean_description(entry.description),
                         "link": entry.link,
                         "source": "JobsCollider",
                         "original_language": lang,

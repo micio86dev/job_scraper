@@ -75,9 +75,7 @@ class JoobleScraper(BaseScraper):
                     {
                         "title": item.get("title"),
                         "company": {"name": item.get("company") or "Unknown"},
-                        "description": item.get(
-                            "snippet"
-                        ),  # Snippet is often enough for AI
+                        "description": self.clean_description(item.get("snippet")),
                         "link": item.get("link"),
                         "location_raw": item.get("location"),
                         "source": f"Jooble ({item.get('source', 'Unknown')})",

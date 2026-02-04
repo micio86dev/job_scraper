@@ -79,7 +79,7 @@ class ArbeitnowScraper(BaseScraper):
                             "name": item.get("company_name"),
                             "logo": None,
                         },  # Logo URL is not always direct
-                        "description": description,
+                        "description": self.clean_description(description),
                         "link": item.get("url"),
                         "location_raw": item.get("location"),
                         "source": "Arbeitnow",

@@ -70,7 +70,7 @@ class TechMapScraper(BaseScraper):
                             "name": item.get("company_name", "Unknown"),
                             "logo": item.get("company_logo"),
                         },
-                        "description": item.get("description", ""),
+                        "description": self.clean_description(item.get("description", "")),
                         "link": item.get("url"),
                         "source": "TechMap",
                         "original_language": lang,

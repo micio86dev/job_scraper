@@ -50,7 +50,7 @@ class RemoteOKScraper(BaseScraper):
                 jobs.append({
                     "title": title,
                     "company": {"name": item.get('company'), "logo": item.get('company_logo')},
-                    "description": description,
+                    "description": self.clean_description(description),
                     "link": item.get('url') or item.get('apply_url'),
                     "location_raw": item.get('location'),
                     "source": "RemoteOK",

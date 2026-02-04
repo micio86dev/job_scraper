@@ -71,7 +71,7 @@ class JobicyScraper(BaseScraper):
                             "name": item.get("companyName", "Unknown"),
                             "logo_url": item.get("companyLogo"),
                         },
-                        "description": item.get("jobDescription", ""),
+                        "description": self.clean_description(item.get("jobDescription", "")),
                         "link": item.get("url", ""),
                         "source": "Jobicy",
                         "original_language": lang,

@@ -65,7 +65,7 @@ class IProgrammatoriScraper(BaseScraper):
                             ),
                             "logo": None,
                         },
-                        "description": description,
+                        "description": self.clean_description(description),
                         "link": link,
                         "location_raw": (
                             item.find("city").text if item.find("city") else ""

@@ -62,7 +62,7 @@ class AdzunaScraper(BaseScraper):
                         "company": {
                             "name": item.get("company", {}).get("display_name")
                         },
-                        "description": item.get("description"),
+                        "description": self.clean_description(item.get("description")),
                         "link": item.get("redirect_url"),
                         "location_raw": item.get("location", {}).get("display_name"),
                         "source": "Adzuna",
