@@ -266,8 +266,12 @@ class JobScraperOrchestrator:
             # Ensure description is Markdown (if it was HTML)
             if job.get("description") and not is_markdown:
                 # Check if it actually looks like HTML to avoid escaping plain text/markdown
-                if bool(BeautifulSoup(job["description"], "html.parser").find()):
-                    job["description"] = md(job["description"])
+                soup = BeautifulSoup(job["description"], "html.parser")
+                if bool(soup.find()):
+                    # Strip all images before converting to markdown
+                    for img in soup.find_all("img"):
+                        img.decompose()
+                    job["description"] = md(str(soup))
 
             # 1. Deduplicate
             if self.deduplicator.is_duplicate(job):

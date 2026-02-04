@@ -128,6 +128,10 @@ class DescriptionFetcher:
                     logger.info(f"Extracted logo from description header: {logo_url}")
                     first_img.decompose()  # Remove from description content
 
+        # REMOVE ALL OTHER IMAGES (per user request)
+        for img in target_container.find_all("img"):
+            img.decompose()
+
         # Convert to markdown
         description = self._clean_markdown(md(str(target_container)))
         return description, logo_url

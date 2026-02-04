@@ -8,7 +8,8 @@ The DevBoards.io scraper is a focused Python-based automation tool that ensures 
 2.  **AI Enrichment**: Uses OpenAI (GPT-4o-mini) to categorize job titles and extract required skills.
 3.  **Geocoding**: Validates company locations and fetches GPS coordinates via Google Maps.
 4.  **Deduplication**: Prevents importing existing jobs by verifying links and critical data.
-5.  **Data Persistence**: Clean and standardized insertion into MongoDB.
+6.  **Description Cleaning**: Strips `<img>` tags from job descriptions to ensure a clean, text-based experience while preserving company logos extracted from headers.
+7.  **Data Persistence**: Clean and standardized insertion into MongoDB.
 
 ## Data Sources
 
