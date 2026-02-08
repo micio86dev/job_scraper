@@ -15,5 +15,5 @@
     "lint": "./venv/bin/flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv",
     "test": "./venv/bin/python -m pytest"
   },
-  "version": "0.0.1"
+  "version": "0.1.0"
 }
