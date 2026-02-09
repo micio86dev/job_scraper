@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 class MongoDBClient:
     def __init__(self, uri: str, database: str):
         if not uri:
-            logger.error("MONGO_URI is not set in environment!")
-            raise ValueError("MONGO_URI not found in environment variables")
+            logger.error("MongoDB URI is not set!")
+            raise ValueError("MongoDB URI not found in environment variables")
 
         try:
             # Detect if we should use TLS (default for Atlas, maybe not for local)
@@ -31,11 +31,15 @@ class MongoDBClient:
             else:
                 connection_args["tls"] = False
 
+            # Log connection attempt (obfuscated URI)
+            safe_uri = uri.split("@")[-1] if "@" in uri else uri
+            logger.info(f"Connecting to MongoDB at {safe_uri} (TLS={use_tls})")
+
             self.client = MongoClient(uri, **connection_args)
             # Trigger connection
             self.client.admin.command("ping")
             self.db = self.client[database]
-            logger.info("MongoDB connection established successfully.")
+            logger.info(f"MongoDB connection established successfully to database: {database}")
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
             raise

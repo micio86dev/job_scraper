@@ -43,8 +43,9 @@ logger = logging.getLogger(__name__)
 
 class JobScraperOrchestrator:
     def __init__(self, languages=None, limit_per_language=None, days_window=1):
+        mongo_uri = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
         self.db_client = MongoDBClient(
-            uri=os.getenv("MONGO_URI"), database=os.getenv("MONGO_DB", "itjobhub")
+            uri=mongo_uri, database=os.getenv("MONGO_DB", "itjobhub")
         )
         self.categorizer = JobCategorizer(
             api_key=os.getenv("OPENAI_API_KEY"),
