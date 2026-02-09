@@ -3,6 +3,7 @@ import asyncio
 from bs4 import BeautifulSoup, Comment
 import logging
 import re
+from typing import Tuple, Optional
 from markdownify import markdownify as md
 
 logger = logging.getLogger(__name__)
@@ -21,7 +22,7 @@ class DescriptionFetcher:
             "Accept-Language": "en-US,en;q=0.9,it;q=0.8",
         }
 
-    async def fetch(self, url: str) -> tuple[str, str | None]:
+    async def fetch(self, url: str) -> Tuple[Optional[str], Optional[str]]:
         """
         Fetches the URL and extracts the job description in Markdown format.
         Returns (description, logo_url) or (None, None) if extraction fails.
@@ -43,7 +44,7 @@ class DescriptionFetcher:
                 logger.error(f"Error fetching {url}: {str(e)}")
                 return None, None
 
-    def _extract_content(self, html: str) -> tuple[str, str | None]:
+    def _extract_content(self, html: str) -> Tuple[Optional[str], Optional[str]]:
         """
         Heuristic to find the main content of the job text.
         Returns (description_markdown, logo_url)
