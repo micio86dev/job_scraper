@@ -7,12 +7,17 @@ from dotenv import load_dotenv
 def verify_connection():
     load_dotenv()
 
-    uri = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
+    uri = (
+        os.getenv("MONGO_URI_STAGE")
+        or os.getenv("MONGO_URI_PROD")
+        or os.getenv("MONGODB_URI")
+        or os.getenv("MONGO_URI")
+    )
     db_name = os.getenv("MONGO_DB")
 
     if not uri:
         print(
-            "❌ MongoDB URI not found in environment variables (checked MONGO_URI and MONGODB_URI)"
+            "❌ MongoDB URI not found in environment variables (checked MONGO_URI_STAGE, MONGO_URI_PROD, MONGODB_URI, MONGO_URI)"
         )
         sys.exit(1)
 
