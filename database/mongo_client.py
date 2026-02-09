@@ -47,9 +47,10 @@ class MongoDBClient:
                         f"Connection to localhost:27017 failed for stage DB. Retrying on port 27018... Error: {e}"
                     )
                     fallback_uri = uri.replace("27017", "27018")
-                    # Force direct connection to avoid resolving internal docker hostnames (mongodb-stage)
+                    # Force direct connection and authSource=admin
                     fallback_args = connection_args.copy()
                     fallback_args["directConnection"] = True
+                    fallback_args["authSource"] = "admin"
                     self.client = MongoClient(fallback_uri, **fallback_args)
                     self.client.admin.command("ping")
                     logger.info("Fallback connection to localhost:27018 successful.")
