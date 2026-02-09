@@ -36,10 +36,27 @@ class MongoDBClient:
             logger.info(f"Connecting to MongoDB at {safe_uri} (TLS={use_tls})")
 
             self.client = MongoClient(uri, **connection_args)
-            # Trigger connection
-            self.client.admin.command("ping")
+
+            # Trigger connection with Smart Fallback for Stage
+            try:
+                self.client.admin.command("ping")
+            except Exception as e:
+                # If localhost:27017 fails and it's a stage DB, try 27018 (Docker mapping)
+                if "localhost" in uri and "27017" in uri and "stage" in database:
+                    logger.warning(
+                        f"Connection to localhost:27017 failed for stage DB. Retrying on port 27018... Error: {e}"
+                    )
+                    fallback_uri = uri.replace("27017", "27018")
+                    self.client = MongoClient(fallback_uri, **connection_args)
+                    self.client.admin.command("ping")
+                    logger.info("Fallback connection to localhost:27018 successful.")
+                else:
+                    raise e
+
             self.db = self.client[database]
-            logger.info(f"MongoDB connection established successfully to database: {database}")
+            logger.info(
+                f"MongoDB connection established successfully to database: {database}"
+            )
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
             raise

@@ -30,11 +30,29 @@ def verify_connection():
 
     try:
         # Connect
-        client = MongoClient(uri)
+        client = MongoClient(uri, serverSelectionTimeoutMS=5000)
 
         # Ping to check connection
         client.admin.command("ping")
         print("✅ Connection successful (Ping)")
+
+    except Exception as e:
+        is_stage = "stage" in db_name if db_name else False
+        if "localhost" in uri and "27017" in uri and is_stage:
+            print(
+                f"   ⚠️ Connection to localhost:27017 failed. Retrying on port 27018 (Smart Fallback)..."
+            )
+            fallback_uri = uri.replace("27017", "27018")
+            try:
+                client = MongoClient(fallback_uri, serverSelectionTimeoutMS=5000)
+                client.admin.command("ping")
+                print("   ✅ Fallback connection to localhost:27018 successful")
+            except Exception as fallback_e:
+                print(f"   ❌ Fallback connection failed: {fallback_e}")
+                sys.exit(1)
+        else:
+            print(f"   ❌ Connection failed: {e}")
+            sys.exit(1)
 
         # Check database access
         db = client[db_name]
