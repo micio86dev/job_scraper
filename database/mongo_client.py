@@ -1,3 +1,4 @@
+import os
 import certifi
 from pymongo import MongoClient
 import logging
@@ -9,14 +10,19 @@ logger = logging.getLogger(__name__)
 
 
 class MongoDBClient:
-    def __init__(self, uri: str, database: str):
-        if not uri:
+    def __init__(self, uri: str = None, database: str = None):
+        # Priority: passed uri > DATABASE_URL > MONGO_URI (legacy)
+        self.db_url = uri or os.getenv("DATABASE_URL") or os.getenv("MONGO_URI")
+
+        if not self.db_url:
             logger.error("MongoDB URI is not set!")
-            raise ValueError("MongoDB URI not found in environment variables")
+            raise ValueError(
+                "DATABASE_URL or MONGO_URI not found in environment variables"
+            )
 
         try:
             # Detect if we should use TLS (default for Atlas, maybe not for local)
-            use_tls = "localhost" not in uri and "127.0.0.1" not in uri
+            use_tls = "localhost" not in self.db_url and "127.0.0.1" not in self.db_url
 
             # For debugging SSL errors on macOS
             connection_args = {
@@ -32,21 +38,34 @@ class MongoDBClient:
                 connection_args["tls"] = False
 
             # Log connection attempt (obfuscated URI)
-            safe_uri = uri.split("@")[-1] if "@" in uri else uri
+            safe_uri = self.db_url.split("@")[-1] if "@" in self.db_url else self.db_url
             logger.info(f"Connecting to MongoDB at {safe_uri} (TLS={use_tls})")
 
-            self.client = MongoClient(uri, **connection_args)
+            self.client = MongoClient(self.db_url, **connection_args)
 
             # Trigger connection with Smart Fallback for Stage
             try:
                 self.client.admin.command("ping")
             except Exception as e:
+                # Extract database name from URI to check if it's stage
+                db_from_uri = None
+                if database:
+                    db_from_uri = database
+                elif "?" in self.db_url:
+                    # Extract from mongodb://host:port/dbname?params
+                    db_from_uri = self.db_url.split("/")[-1].split("?")[0]
+
                 # If localhost:27017 fails and it's a stage DB, try 27018 (Docker mapping)
-                if "localhost" in uri and "27017" in uri and "stage" in database:
+                if (
+                    "localhost" in self.db_url
+                    and "27017" in self.db_url
+                    and db_from_uri
+                    and "stage" in db_from_uri
+                ):
                     logger.warning(
                         f"Connection to localhost:27017 failed for stage DB. Retrying on port 27018... Error: {e}"
                     )
-                    fallback_uri = uri.replace("27017", "27018")
+                    fallback_uri = self.db_url.replace("27017", "27018")
                     # Force direct connection and authSource=admin
                     fallback_args = connection_args.copy()
                     fallback_args["directConnection"] = True
@@ -57,10 +76,20 @@ class MongoDBClient:
                 else:
                     raise e
 
-            self.db = self.client[database]
-            logger.info(
-                f"MongoDB connection established successfully to database: {database}"
-            )
+            # Use database from connection string if not explicitly provided
+            if database:
+                self.db = self.client[database]
+                logger.info(
+                    f"MongoDB connection established successfully to database: {database}"
+                )
+            else:
+                self.db = (
+                    self.client.get_database()
+                )  # Uses database from connection string
+                logger.info(
+                    f"MongoDB connection established successfully to database: {self.db.name}"
+                )
+
         except Exception as e:
             logger.error(f"Failed to connect to MongoDB: {e}")
             raise

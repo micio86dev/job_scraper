@@ -7,25 +7,29 @@ from dotenv import load_dotenv
 def verify_connection():
     load_dotenv()
 
-    uri = (
-        os.getenv("MONGO_URI_STAGE")
-        or os.getenv("MONGO_URI_PROD")
-        or os.getenv("MONGODB_URI")
-        or os.getenv("MONGO_URI")
-    )
+    # Priority: DATABASE_URL > MONGO_URI (legacy)
+    uri = os.getenv("DATABASE_URL") or os.getenv("MONGO_URI")
+
+    # Try to extract database name from MONGO_DB env or from URI
     db_name = os.getenv("MONGO_DB")
 
     if not uri:
         print(
-            "❌ MongoDB URI not found in environment variables (checked MONGO_URI_STAGE, MONGO_URI_PROD, MONGODB_URI, MONGO_URI)"
+            "❌ MongoDB URI not found in environment variables (checked DATABASE_URL, MONGO_URI)"
         )
         sys.exit(1)
 
-    if not db_name:
-        print("❌ MONGO_DB not found in environment variables")
-        sys.exit(1)
+    # Extract database from URI if not provided via MONGO_DB
+    if not db_name and "/" in uri:
+        # Extract from mongodb://host:port/dbname or mongodb://host:port/dbname?params
+        try:
+            db_name = uri.split("/")[-1].split("?")[0]
+            if not db_name:
+                db_name = "itjobhub"  # Fallback
+        except Exception:
+            db_name = "itjobhub"  # Fallback
 
-    print(f"🔌 Testing connection to MongoDB...")
+    print("🔌 Testing connection to MongoDB...")
     print(f"   Database: {db_name}")
 
     try:
@@ -40,7 +44,7 @@ def verify_connection():
         is_stage = "stage" in db_name if db_name else False
         if "localhost" in uri and "27017" in uri and is_stage:
             print(
-                f"   ⚠️ Connection to localhost:27017 failed. Retrying on port 27018 (Smart Fallback)..."
+                "   ⚠️ Connection to localhost:27017 failed. Retrying on port 27018 (Smart Fallback)..."
             )
             fallback_uri = uri.replace("27017", "27018")
             try:

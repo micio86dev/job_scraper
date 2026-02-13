@@ -43,17 +43,9 @@ logger = logging.getLogger(__name__)
 
 class JobScraperOrchestrator:
     def __init__(self, languages=None, limit_per_language=None, days_window=1):
-        # Env Priority: Stage/Prod specific > MONGODB_URI (generic) > MONGO_URI (legacy/local)
-        mongo_uri = (
-            os.getenv("MONGO_URI_STAGE")
-            or os.getenv("MONGO_URI_PROD")
-            or os.getenv("MONGODB_URI")
-            or os.getenv("MONGO_URI")
-        )
-
-        self.db_client = MongoDBClient(
-            uri=mongo_uri, database=os.getenv("MONGO_DB", "itjobhub")
-        )
+        # Database connection using DATABASE_URL (with MONGO_URI fallback)
+        # The database name will be extracted from the connection string
+        self.db_client = MongoDBClient()
         self.categorizer = JobCategorizer(
             api_key=os.getenv("OPENAI_API_KEY"),
             model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
@@ -306,12 +298,12 @@ class JobScraperOrchestrator:
                 if ai_data.get("salary_min"):
                     try:
                         ai_data["salary_min"] = int(ai_data["salary_min"])
-                    except:
+                    except (ValueError, TypeError):
                         ai_data["salary_min"] = None
                 if ai_data.get("salary_max"):
                     try:
                         ai_data["salary_max"] = int(ai_data["salary_max"])
-                    except:
+                    except (ValueError, TypeError):
                         ai_data["salary_max"] = None
 
                 # Ensure remote is boolean (default False)
@@ -463,7 +455,8 @@ class JobScraperOrchestrator:
 
                             if self.lang_count == old_count:
                                 logger.info(
-                                    "No new jobs added from this page, might be all duplicates or too old. Trying one more page."
+                                    "No new jobs added from this page, might be all "
+                                    "duplicates or too old. Trying one more page."
                                 )
                                 if page > 5:  # Safety break
                                     break
