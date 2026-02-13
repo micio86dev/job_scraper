@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 class MongoDBClient:
     def __init__(self, uri: str = None, database: str = None):
         self.db_url = uri or os.getenv("DATABASE_URL")
+        self.db_name = database or os.getenv("MONGO_DB")
 
         if not self.db_url:
             logger.error("MongoDB URI is not set!")
@@ -18,7 +19,12 @@ class MongoDBClient:
 
         try:
             self.client = MongoClient(self.db_url)
-            self.db = self.client.get_database()  # Uses database from connection string
+
+            # Use explicit DB name if provided, otherwise fallback to URI default
+            if self.db_name:
+                self.db = self.client[self.db_name]
+            else:
+                self.db = self.client.get_database()
 
             self._ensure_indexes()
             logger.info(f"Connected to MongoDB (database: {self.db.name})")
