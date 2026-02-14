@@ -18,7 +18,7 @@ class MongoDBClient:
             raise ValueError("DATABASE_URL not found in environment variables")
 
         try:
-            self.client = MongoClient(self.db_url, directConnection=True)
+            self.client = MongoClient(self.db_url)
 
             # Use explicit DB name if provided, otherwise fallback to URI default
             if self.db_name:
