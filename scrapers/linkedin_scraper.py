@@ -205,12 +205,241 @@ class LinkedInScraper(BaseScraper):
 
             soup = BeautifulSoup(response.text, "html.parser")
 
-            # Extract description
-            desc_elem = soup.find("div", class_="description__text")
+            # Extract description using the most precise container available
+            # 1. Look for the specific SDUI component suggested by the user
+            desc_elem = soup.find(
+                attrs={
+                    "data-sdui-component": "com.linkedin.sdui.generated.jobseeker.dsl.impl.aboutTheJob"
+                }
+            )
+
+            # 2. Fallback to the markup container typically found in Guest API
+            if not desc_elem:
+                desc_elem = soup.find("div", class_="show-more-less-html__markup")
+
+            # 3. Final fallback to the generic description text div
+            if not desc_elem:
+                desc_elem = soup.find("div", class_="description__text")
+
             description = ""
             if desc_elem:
-                # Convert to text preserving some structure
-                description = desc_elem.get_text(separator="\n", strip=True)
+                # 1. Remove unwanted elements based on CLASS
+
+                # Remove "Show more/less" buttons and text
+                for btn in desc_elem.find_all(class_="show-more-less-html__button"):
+                    btn.decompose()
+
+                # Remove "Referral" sections (specific container)
+                for ref in desc_elem.find_all(class_="find-a-referral__cta-container"):
+                    ref.decompose()
+
+                # Remove "Job Alert" sections (specific container)
+                for alert in desc_elem.find_all(class_="job-details-how-to-apply"):
+                    alert.decompose()
+
+                # Remove "Similar Jobs" sections (specific container)
+                for similar in desc_elem.find_all(
+                    class_=lambda x: x and "similar-jobs" in x
+                ):
+                    similar.decompose()
+
+                # Remove "Contextual Sign In" modal
+                for signin in desc_elem.find_all(class_="contextual-sign-in-modal"):
+                    signin.decompose()
+
+                # Remove "Job Alert Redirect" section
+                for redirect in desc_elem.find_all(class_="job-alert-redirect-section"):
+                    redirect.decompose()
+
+                # 2. Remove unwanted elements based on TEXT CONTENT (if classes fail)
+
+                # List of text patterns that indicate a whole block should be removed
+                block_removal_patterns = [
+                    r"Referrals increase your chances",
+                    r"See who you know",
+                    r"Get notified about new",
+                    r"Sign in to create job alert",
+                    r"Similar jobs",
+                    r"Similar Searches",
+                    r"Explore collaborative articles",
+                    r"Explore More",
+                    r"People also viewed",
+                    r"Job alert",
+                    r"Alert set",
+                ]
+
+                for pattern in block_removal_patterns:
+                    for tag in desc_elem.find_all(
+                        text=re.compile(pattern, re.IGNORECASE)
+                    ):
+                        parent = tag.parent
+                        # If found, try to remove the containing block (e.g. div or section)
+                        # We climb up slightly to catch the wrapper
+                        if parent and parent != desc_elem:
+                            # If it's a small inline tag, maybe go one level up
+                            if parent.name in ["span", "a", "strong", "em"]:
+                                grandparent = parent.parent
+                                if (
+                                    grandparent
+                                    and grandparent != desc_elem
+                                    and grandparent.name
+                                    in ["div", "section", "p", "li"]
+                                ):
+                                    grandparent.decompose()
+                                else:
+                                    parent.decompose()
+                            else:
+                                parent.decompose()
+
+                # 3. General Cleanup (Buttons, Criteria, etc)
+
+                # Remove remaining buttons
+                for btn in desc_elem.find_all("button"):
+                    btn.decompose()
+
+                # Remove "Show more/less" text spans if they survived class removal
+                for span in desc_elem.find_all(
+                    "span",
+                    text=re.compile(
+                        r"Show (more|less)|Mehr anzeigen|Weniger anzeigen",
+                        re.IGNORECASE,
+                    ),
+                ):
+                    span.decompose()
+
+                # Remove job criteria list (often duplicated in description text or just noise)
+                for criteria in desc_elem.find_all(
+                    "ul", class_="description__job-criteria-list"
+                ):
+                    criteria.decompose()
+
+                # Also remove the criteria *header* if it exists separately (often h3)
+                for header in desc_elem.find_all(
+                    "h3",
+                    text=re.compile(
+                        r"Job criteria|Kriterien|Dettagli offert", re.IGNORECASE
+                    ),
+                ):
+                    header.decompose()
+
+                # Remove specific noise text without removing parent if it's the main desc
+                noise_patterns = [
+                    r"Mit einer Empfehlung lassen sich",
+                    r"Wen kennen Sie bereits",
+                    r"Lassen Sie sich benachrichtigen",
+                    r"Loggen Sie sich ein",
+                    r"Benachrichtigung einstellen",
+                    r"Passwort vergessen",
+                    r"Neu bei LinkedIn",
+                    r"Zum Bewerben",
+                    r"E-Mail-Adresse/Telefon",
+                    r"Show more",
+                    r"Show less",
+                    r"Mehr anzeigen",
+                    r"Weniger anzeigen",
+                    r"Ähnliche Suchen",
+                    r"Das könnte Sie auch interessieren",
+                    r"Personen haben sich auch angesehen",
+                    r"Job-Alarm erstellen",
+                    r"Similar searches",
+                    r"People also viewed",
+                ]
+
+                for pattern in noise_patterns:
+                    for tag in desc_elem.find_all(
+                        text=re.compile(pattern, re.IGNORECASE)
+                    ):
+                        tag.replace_with("")
+
+                # 4. Normalize HTML
+                cleaned_html = self.normalize_html(str(desc_elem))
+
+                # 5. Convert to Markdown
+                from markdownify import markdownify as md
+
+                description = md(cleaned_html, heading_style="atx").strip()
+
+                # Post-processing cleanup
+                lines = description.split("\n")
+                cleaned_lines = []
+
+                # Truncation triggers: If we see these, DISCARD EVERYTHING AFTER
+                truncation_triggers = [
+                    "similar jobs",
+                    "similar searches",
+                    "ähnliche jobs",
+                    "ähnliche suchen",
+                    "explore collaborative articles",
+                    "explore more",
+                    "people also viewed",
+                    "ebenfalls angesehen",
+                    "personen haben sich auch angesehen",
+                    "das potrebbe interessarti",
+                    "das könnte sie auch interessieren",
+                    "sign in to create job alert",
+                    "job-alarm erstellen",
+                    "get notified about new",
+                    "referrals increase your chances",
+                    "see who you know",
+                    "mit einer empfehlung lassen sich",
+                    "wen kennen sie bereits",
+                ]
+
+                # Skip triggers: If we see these, JUST SKIP THE LINE
+                skip_triggers = [
+                    "show more",
+                    "show less",
+                    "mehr anzeigen",
+                    "weniger anzeigen",
+                    "einblenden",
+                    "ausblenden",
+                    "seniority level",
+                    "employment type",
+                    "job function",
+                    "industries",
+                    "karrierestufe",
+                    "beschäftigungsverhältnis",
+                    "tätigkeitsbereich",
+                    "branchen",
+                ]
+
+                for line in lines:
+                    s_line = line.strip()
+                    if not s_line:
+                        cleaned_lines.append(line)
+                        continue
+
+                    lower_line = s_line.lower()
+
+                    # 1. Check for TRUNCATION (Hard stop)
+                    should_truncate = False
+                    for trigger in truncation_triggers:
+                        # Check if line IS the trigger or STARTS with it (for headers like "### Similar jobs")
+                        if (
+                            lower_line == trigger
+                            or lower_line.startswith(trigger)
+                            or (lower_line.startswith("### ") and trigger in lower_line)
+                        ):
+                            should_truncate = True
+                            break
+
+                    if should_truncate:
+                        # Stop processing completely
+                        break
+
+                    # 2. Check for SKIP (Individual line removal)
+                    should_skip = False
+                    for trigger in skip_triggers:
+                        if lower_line == trigger or lower_line.startswith(trigger):
+                            should_skip = True
+                            break
+
+                    if should_skip:
+                        continue
+
+                    cleaned_lines.append(line)
+
+                description = "\n".join(cleaned_lines).strip()
 
             # Extract criteria
             criteria = {}

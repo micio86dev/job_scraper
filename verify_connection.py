@@ -8,7 +8,7 @@ def verify_connection():
     load_dotenv()
 
     # Priority: DATABASE_URL > MONGO_URI (legacy)
-    uri = os.getenv("DATABASE_URL") or os.getenv("MONGO_URI")
+    uri = os.getenv("DATABASE_URL")
 
     # Try to extract database name from MONGO_DB env or from URI
     db_name = os.getenv("MONGO_DB")
